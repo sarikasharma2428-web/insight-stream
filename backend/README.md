@@ -18,7 +18,7 @@ A Loki-inspired log aggregation system built in Go. Stores logs cheaply using la
 ### Run Server Locally
 
 ```bash
-cd loki-lite
+cd backend
 go mod download
 go build -o lokilite ./cmd/server
 ./lokilite
@@ -34,7 +34,7 @@ go build -o lokilite-agent ./cmd/agent
 ### Run with Docker
 
 ```bash
-cd docker
+cd backend/docker
 docker-compose up -d
 ```
 
@@ -158,7 +158,7 @@ chmod +x scripts/generate_logs.sh
 ## Project Structure
 
 ```
-loki-lite/
+backend/
 ├── cmd/
 │   ├── server/main.go      # Server entry point
 │   └── agent/main.go       # Agent entry point
