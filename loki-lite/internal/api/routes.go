@@ -17,6 +17,7 @@ func NewRouter(
 	reader *storage.Reader,
 	labelIndex *index.Index,
 	cfg *config.Config,
+	streamHub *StreamHub,
 ) *mux.Router {
 	router := mux.NewRouter()
 
@@ -24,6 +25,7 @@ func NewRouter(
 	healthHandler := NewHealthHandler(ingestor, reader, labelIndex)
 	ingestHandler := NewIngestHandler(ingestor)
 	queryHandler := NewQueryHandler(labelIndex, reader)
+	streamHandler := NewStreamHandler(streamHub)
 
 	// Apply middleware
 	router.Use(corsMiddleware)
@@ -42,6 +44,9 @@ func NewRouter(
 	router.HandleFunc("/query", queryHandler.Query).Methods("GET", "OPTIONS")
 	router.HandleFunc("/labels", queryHandler.Labels).Methods("GET", "OPTIONS")
 	router.HandleFunc("/labels/{name}/values", queryHandler.LabelValues).Methods("GET", "OPTIONS")
+
+	// WebSocket endpoint for live streaming
+	router.HandleFunc("/stream", streamHandler.HandleStream).Methods("GET")
 
 	return router
 }
@@ -65,7 +70,6 @@ func corsMiddleware(next http.Handler) http.Handler {
 // loggingMiddleware logs all requests
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simple logging - you can enhance this
 		next.ServeHTTP(w, r)
 	})
 }
@@ -74,8 +78,13 @@ func loggingMiddleware(next http.Handler) http.Handler {
 func authMiddleware(apiKey string) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip auth for OPTIONS requests
 			if r.Method == "OPTIONS" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Skip auth for WebSocket upgrade
+			if r.Header.Get("Upgrade") == "websocket" {
 				next.ServeHTTP(w, r)
 				return
 			}

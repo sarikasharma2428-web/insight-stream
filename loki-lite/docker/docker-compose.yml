@@ -12,9 +12,24 @@ services:
     environment:
       - LOKILITE_PORT=8080
       - LOKILITE_STORAGE_PATH=/app/data/logs
-      # Uncomment to enable auth:
-      # - LOKILITE_API_KEY=your-secret-key
     restart: unless-stopped
+    networks:
+      - lokilite-net
+
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    volumes:
+      - /var/log:/var/log:ro  # Mount host logs as read-only
+      - agent-positions:/app/positions
+    environment:
+      - LOKILITE_SERVER_URL=http://lokilite:8080
+    depends_on:
+      - lokilite
+    restart: unless-stopped
+    networks:
+      - lokilite-net
 
   # Optional: Grafana for visualization
   grafana:
@@ -27,6 +42,8 @@ services:
       - grafana-data:/var/lib/grafana
     depends_on:
       - lokilite
+    networks:
+      - lokilite-net
 
   # Optional: Prometheus for metrics
   prometheus:
@@ -39,7 +56,14 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
     depends_on:
       - lokilite
+    networks:
+      - lokilite-net
+
+networks:
+  lokilite-net:
+    driver: bridge
 
 volumes:
   lokilite-data:
+  agent-positions:
   grafana-data:

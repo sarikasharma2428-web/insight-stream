@@ -7,12 +7,13 @@ import { SettingsPanel } from '@/components/SettingsPanel';
 import { LabelsExplorer } from '@/components/LabelsExplorer';
 import { MetricsDashboard } from '@/components/MetricsDashboard';
 import { AlertConfig } from '@/components/AlertConfig';
+import { LiveStream } from '@/components/LiveStream';
 import { LogEntry, BackendConfig, BackendHealth, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Search, Tag, Activity, Bell, FlaskConical } from 'lucide-react';
+import { Search, Tag, Activity, Bell, FlaskConical, Radio } from 'lucide-react';
 
-type TabType = 'logs' | 'labels' | 'metrics' | 'alerts';
+type TabType = 'logs' | 'live' | 'labels' | 'metrics' | 'alerts';
 type RightPanelType = 'test' | null;
 
 const Index = () => {
@@ -144,6 +145,7 @@ const Index = () => {
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'logs', label: 'Logs', icon: <Search className="h-4 w-4" /> },
+    { id: 'live', label: 'Live', icon: <Radio className="h-4 w-4" /> },
     { id: 'labels', label: 'Labels', icon: <Tag className="h-4 w-4" /> },
     { id: 'metrics', label: 'Metrics', icon: <Activity className="h-4 w-4" /> },
     { id: 'alerts', label: 'Alerts', icon: <Bell className="h-4 w-4" /> },
@@ -158,7 +160,6 @@ const Index = () => {
       />
       
       <div className="flex flex-1 overflow-hidden">
-        {/* Main content area */}
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* Tab navigation */}
           <div className="flex items-center border-b border-border px-4">
@@ -175,6 +176,9 @@ const Index = () => {
                 >
                   {tab.icon}
                   {tab.label}
+                  {tab.id === 'live' && (
+                    <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                  )}
                 </button>
               ))}
             </div>
@@ -226,6 +230,10 @@ const Index = () => {
                     />
                   </div>
                 </>
+              )}
+
+              {activeTab === 'live' && (
+                <LiveStream isConnected={isConnected} />
               )}
 
               {activeTab === 'labels' && (

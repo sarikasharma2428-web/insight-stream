@@ -28,15 +28,21 @@ func main() {
 	labelIndex := index.NewIndex()
 	storageWriter := storage.NewWriter(cfg.Storage.Path, cfg.Storage.ChunkSizeBytes)
 	storageReader := storage.NewReader(cfg.Storage.Path)
-	ingestor := ingest.NewIngestor(labelIndex, storageWriter, cfg.Ingest.BufferSize)
+	
+	// Initialize streaming hub
+	streamHub := api.NewStreamHub()
+	go streamHub.Run()
+
+	// Initialize ingestor with stream hub for live broadcasting
+	ingestor := ingest.NewIngestor(labelIndex, storageWriter, cfg.Ingest.BufferSize, streamHub)
 
 	// Start background workers
 	go ingestor.Start()
 	go storage.StartRetentionWorker(cfg.Storage.Path, cfg.Storage.RetentionDays)
 
 	// Setup HTTP server
-	router := api.NewRouter(ingestor, storageReader, labelIndex, cfg)
-	
+	router := api.NewRouter(ingestor, storageReader, labelIndex, cfg, streamHub)
+
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
 		Handler:      router,
@@ -58,6 +64,7 @@ func main() {
 
 	// Start server
 	log.Printf("LokiLite is ready at http://localhost:%s", cfg.Server.Port)
+	log.Printf("WebSocket streaming available at ws://localhost:%s/stream", cfg.Server.Port)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
