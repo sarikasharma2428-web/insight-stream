@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  lokilite:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - lokilite-data:/app/data
+    environment:
+      - LOKILITE_PORT=8080
+      - LOKILITE_STORAGE_PATH=/app/data/logs
+      # Uncomment to enable auth:
+      # - LOKILITE_API_KEY=your-secret-key
+    restart: unless-stopped
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - lokilite
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - lokilite
+
+volumes:
+  lokilite-data:
+  grafana-data:
