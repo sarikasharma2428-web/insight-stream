@@ -123,10 +123,7 @@ export function LiveStream({ isConnected }: LiveStreamProps) {
   if (!isConnected) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        <div className="text-center">
-          <Radio className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>Connect to backend to use live streaming</p>
-        </div>
+        <p className="text-sm">Connect to backend to use live streaming</p>
       </div>
     );
   }
