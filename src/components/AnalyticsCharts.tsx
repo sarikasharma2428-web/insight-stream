@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { AreaChart, Area, XAxis, YAxis, BarChart, Bar, LineChart, Line, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, TrendingDown, AlertTriangle, Activity, Server, Clock } from 'lucide-react';
-import { apiClient } from '@/lib/api';
+import { AreaChart, Area, XAxis, YAxis, BarChart, Bar, LineChart, Line, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine, ReferenceArea } from 'recharts';
+import { TrendingUp, AlertTriangle, Activity, Server, Zap, ShieldAlert, TrendingDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface AnalyticsChartsProps {
   isConnected: boolean;
@@ -16,6 +16,8 @@ interface TimeSeriesData {
   info: number;
   debug: number;
   total: number;
+  isAnomaly?: boolean;
+  anomalyType?: 'spike' | 'drop' | 'error_surge';
 }
 
 interface ServiceHealth {
@@ -26,6 +28,81 @@ interface ServiceHealth {
   requestCount: number;
 }
 
+interface Anomaly {
+  id: string;
+  time: string;
+  type: 'volume_spike' | 'volume_drop' | 'error_surge' | 'latency_spike';
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  value: number;
+  expected: number;
+  deviation: number;
+}
+
+// Statistical functions for anomaly detection
+const calculateStats = (values: number[]) => {
+  const n = values.length;
+  if (n === 0) return { mean: 0, stdDev: 0 };
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / n;
+  return { mean, stdDev: Math.sqrt(variance) };
+};
+
+const detectAnomalies = (data: TimeSeriesData[]): { anomalies: Anomaly[]; annotatedData: TimeSeriesData[] } => {
+  if (data.length < 3) return { anomalies: [], annotatedData: data };
+  
+  const totalValues = data.map(d => d.total);
+  const errorValues = data.map(d => d.errors);
+  
+  const totalStats = calculateStats(totalValues);
+  const errorStats = calculateStats(errorValues);
+  
+  const anomalies: Anomaly[] = [];
+  const annotatedData = data.map((point, index) => {
+    const newPoint = { ...point };
+    
+    // Detect volume spikes (> 2 standard deviations)
+    const totalDeviation = (point.total - totalStats.mean) / (totalStats.stdDev || 1);
+    if (Math.abs(totalDeviation) > 2) {
+      newPoint.isAnomaly = true;
+      newPoint.anomalyType = totalDeviation > 0 ? 'spike' : 'drop';
+      anomalies.push({
+        id: `vol-${index}`,
+        time: point.time,
+        type: totalDeviation > 0 ? 'volume_spike' : 'volume_drop',
+        severity: Math.abs(totalDeviation) > 3 ? 'high' : Math.abs(totalDeviation) > 2.5 ? 'medium' : 'low',
+        message: totalDeviation > 0 
+          ? `Volume spike: ${point.total} logs (${(totalDeviation * 100).toFixed(0)}% above normal)`
+          : `Volume drop: ${point.total} logs (${(Math.abs(totalDeviation) * 100).toFixed(0)}% below normal)`,
+        value: point.total,
+        expected: totalStats.mean,
+        deviation: totalDeviation,
+      });
+    }
+    
+    // Detect error surges (> 1.5 standard deviations for errors)
+    const errorDeviation = (point.errors - errorStats.mean) / (errorStats.stdDev || 1);
+    if (errorDeviation > 1.5 && point.errors > 5) {
+      newPoint.isAnomaly = true;
+      newPoint.anomalyType = 'error_surge';
+      anomalies.push({
+        id: `err-${index}`,
+        time: point.time,
+        type: 'error_surge',
+        severity: errorDeviation > 3 ? 'high' : errorDeviation > 2 ? 'medium' : 'low',
+        message: `Error surge: ${point.errors} errors (${(errorDeviation * 100).toFixed(0)}% above baseline)`,
+        value: point.errors,
+        expected: errorStats.mean,
+        deviation: errorDeviation,
+      });
+    }
+    
+    return newPoint;
+  });
+  
+  return { anomalies, annotatedData };
+};
+
 export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
   const [volumeData, setVolumeData] = useState<TimeSeriesData[]>([]);
   const [serviceHealth, setServiceHealth] = useState<ServiceHealth[]>([]);
@@ -33,6 +110,11 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState('1h');
   
   const timeRanges = ['15m', '1h', '6h', '24h'];
+
+  // Detect anomalies in the data
+  const { anomalies, annotatedData } = useMemo(() => {
+    return detectAnomalies(volumeData);
+  }, [volumeData]);
 
   useEffect(() => {
     if (isConnected) {
@@ -43,17 +125,15 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
   const fetchAnalytics = async () => {
     setIsLoading(true);
     try {
-      // Generate mock analytics data
-      generateMockData(null);
+      generateMockData();
     } catch {
-      // Generate mock data for demo
-      generateMockData(null);
+      generateMockData();
     } finally {
       setIsLoading(false);
     }
   };
 
-  const generateMockData = (metrics: Record<string, number> | null) => {
+  const generateMockData = () => {
     const now = new Date();
     const points = selectedTimeRange === '15m' ? 15 : selectedTimeRange === '1h' ? 12 : selectedTimeRange === '6h' ? 24 : 48;
     const intervalMs = selectedTimeRange === '15m' ? 60000 : selectedTimeRange === '1h' ? 300000 : selectedTimeRange === '6h' ? 900000 : 1800000;
@@ -61,20 +141,31 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
     const data: TimeSeriesData[] = [];
     for (let i = points; i >= 0; i--) {
       const time = new Date(now.getTime() - i * intervalMs);
-      const baseVolume = metrics?.lokiclone_ingested_lines_total ? Math.floor(metrics.lokiclone_ingested_lines_total / points) : Math.floor(Math.random() * 500 + 200);
+      let baseVolume = Math.floor(Math.random() * 300 + 300);
+      let errorCount = Math.floor(Math.random() * 15);
+      
+      // Inject some anomalies for demo
+      if (i === Math.floor(points * 0.3)) {
+        baseVolume = baseVolume * 3; // Volume spike
+      }
+      if (i === Math.floor(points * 0.6)) {
+        errorCount = errorCount * 5; // Error surge
+      }
+      if (i === Math.floor(points * 0.8)) {
+        baseVolume = Math.floor(baseVolume * 0.3); // Volume drop
+      }
       
       data.push({
         time: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        errors: Math.floor(Math.random() * (baseVolume * 0.05)),
-        warns: Math.floor(Math.random() * (baseVolume * 0.15)),
+        errors: errorCount,
+        warns: Math.floor(Math.random() * 30 + 10),
         info: Math.floor(baseVolume * 0.6 + Math.random() * 50),
         debug: Math.floor(baseVolume * 0.2 + Math.random() * 30),
-        total: baseVolume + Math.floor(Math.random() * 100 - 50),
+        total: baseVolume,
       });
     }
     setVolumeData(data);
 
-    // Mock service health data
     const services = ['api-gateway', 'auth-service', 'user-service', 'payment-service', 'notification-service'];
     const healthData: ServiceHealth[] = services.map(name => ({
       name,
@@ -105,6 +196,9 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
     debug: { label: 'Debug', color: 'hsl(var(--muted-foreground))' },
     total: { label: 'Total', color: 'hsl(var(--primary))' },
   };
+
+  const highSeverityAnomalies = anomalies.filter(a => a.severity === 'high');
+  const mediumSeverityAnomalies = anomalies.filter(a => a.severity === 'medium');
 
   if (!isConnected) {
     return (
@@ -187,43 +281,195 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
         </Card>
       </div>
 
+      {/* Anomaly Detection Panel */}
+      {anomalies.length > 0 && (
+        <Card className="glass-panel border-warning/30 bg-warning/5">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-warning" />
+                <CardTitle className="text-sm font-medium">Anomaly Detection</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                {highSeverityAnomalies.length > 0 && (
+                  <Badge variant="destructive" className="text-xs">
+                    {highSeverityAnomalies.length} High
+                  </Badge>
+                )}
+                {mediumSeverityAnomalies.length > 0 && (
+                  <Badge className="bg-warning text-warning-foreground text-xs">
+                    {mediumSeverityAnomalies.length} Medium
+                  </Badge>
+                )}
+                <Badge variant="secondary" className="text-xs">
+                  {anomalies.length} Total
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 max-h-[150px] overflow-auto scrollbar-thin">
+              {anomalies.map((anomaly) => (
+                <div
+                  key={anomaly.id}
+                  className={`flex items-center justify-between p-2 rounded-lg border ${
+                    anomaly.severity === 'high'
+                      ? 'border-destructive/30 bg-destructive/10'
+                      : anomaly.severity === 'medium'
+                      ? 'border-warning/30 bg-warning/10'
+                      : 'border-border bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-1.5 rounded ${
+                      anomaly.type === 'volume_spike' ? 'bg-info/20 text-info' :
+                      anomaly.type === 'volume_drop' ? 'bg-muted text-muted-foreground' :
+                      anomaly.type === 'error_surge' ? 'bg-destructive/20 text-destructive' :
+                      'bg-warning/20 text-warning'
+                    }`}>
+                      {anomaly.type === 'volume_spike' ? <TrendingUp className="h-4 w-4" /> :
+                       anomaly.type === 'volume_drop' ? <TrendingDown className="h-4 w-4" /> :
+                       anomaly.type === 'error_surge' ? <AlertTriangle className="h-4 w-4" /> :
+                       <Zap className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{anomaly.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Detected at {anomaly.time} • Expected: ~{Math.round(anomaly.expected)}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge 
+                    variant={anomaly.severity === 'high' ? 'destructive' : anomaly.severity === 'medium' ? 'default' : 'secondary'}
+                    className={anomaly.severity === 'medium' ? 'bg-warning text-warning-foreground' : ''}
+                  >
+                    {anomaly.severity}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Charts Row 1 */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Log Volume Trend */}
+        {/* Log Volume Trend with Anomaly Markers */}
         <Card className="glass-panel">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Log Volume Over Time</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Log Volume Over Time</CardTitle>
+              {annotatedData.some(d => d.isAnomaly) && (
+                <Badge variant="outline" className="text-xs border-warning text-warning">
+                  <Zap className="h-3 w-3 mr-1" />
+                  Anomalies detected
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[200px]">
-              <AreaChart data={volumeData}>
+              <AreaChart data={annotatedData}>
                 <defs>
                   <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                   </linearGradient>
+                  <linearGradient id="anomalyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--warning))" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
+                  </linearGradient>
                 </defs>
                 <XAxis dataKey="time" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartTooltip 
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const data = payload[0].payload as TimeSeriesData;
+                    return (
+                      <div className="bg-popover border border-border rounded-lg p-2 shadow-lg">
+                        <p className="text-xs text-muted-foreground">{data.time}</p>
+                        <p className="text-sm font-mono">{data.total} logs</p>
+                        {data.isAnomaly && (
+                          <p className="text-xs text-warning font-medium mt-1">
+                            ⚠️ Anomaly: {data.anomalyType?.replace('_', ' ')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }}
+                />
                 <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="url(#totalGradient)" strokeWidth={2} />
+                {/* Highlight anomaly points */}
+                {annotatedData.map((point, index) => 
+                  point.isAnomaly && (
+                    <ReferenceLine 
+                      key={index}
+                      x={point.time} 
+                      stroke="hsl(var(--warning))" 
+                      strokeDasharray="3 3"
+                      strokeWidth={1}
+                    />
+                  )
+                )}
               </AreaChart>
             </ChartContainer>
           </CardContent>
         </Card>
 
-        {/* Error Rate Trend */}
+        {/* Error Rate Trend with Anomalies */}
         <Card className="glass-panel">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Error & Warning Trends</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Error & Warning Trends</CardTitle>
+              {anomalies.some(a => a.type === 'error_surge') && (
+                <Badge variant="destructive" className="text-xs">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Error surge
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[200px]">
-              <LineChart data={volumeData}>
+              <LineChart data={annotatedData}>
                 <XAxis dataKey="time" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
+                <ChartTooltip 
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const data = payload[0].payload as TimeSeriesData;
+                    return (
+                      <div className="bg-popover border border-border rounded-lg p-2 shadow-lg">
+                        <p className="text-xs text-muted-foreground">{data.time}</p>
+                        <p className="text-sm font-mono text-destructive">{data.errors} errors</p>
+                        <p className="text-sm font-mono text-warning">{data.warns} warnings</p>
+                        {data.anomalyType === 'error_surge' && (
+                          <p className="text-xs text-destructive font-medium mt-1">
+                            🚨 Error surge detected
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }}
+                />
+                <Line type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" strokeWidth={2} dot={(props) => {
+                  const data = annotatedData[props.index];
+                  if (data?.anomalyType === 'error_surge') {
+                    return (
+                      <circle 
+                        cx={props.cx} 
+                        cy={props.cy} 
+                        r={6} 
+                        fill="hsl(var(--destructive))" 
+                        stroke="hsl(var(--background))"
+                        strokeWidth={2}
+                        className="animate-pulse"
+                      />
+                    );
+                  }
+                  return <circle cx={props.cx} cy={props.cy} r={0} />;
+                }} />
                 <Line type="monotone" dataKey="warns" stroke="hsl(var(--warning))" strokeWidth={2} dot={false} />
               </LineChart>
             </ChartContainer>
