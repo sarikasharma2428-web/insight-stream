@@ -10,15 +10,21 @@ import (
 	"github.com/yourusername/loki-lite/internal/storage"
 )
 
+// StreamBroadcaster interface for live log streaming
+type StreamBroadcaster interface {
+	Broadcast(entry *models.LogEntry)
+}
+
 // Ingestor handles incoming logs and buffers them before writing
 type Ingestor struct {
-	index   *index.Index
-	writer  *storage.Writer
-	bufSize int
+	index       *index.Index
+	writer      *storage.Writer
+	broadcaster StreamBroadcaster
+	bufSize     int
 
 	// Buffer per label set
-	buffers   map[string]*logBuffer
-	bufferMu  sync.Mutex
+	buffers  map[string]*logBuffer
+	bufferMu sync.Mutex
 
 	// Metrics
 	ingestedLines int64
@@ -36,13 +42,14 @@ type logBuffer struct {
 }
 
 // NewIngestor creates a new log ingestor
-func NewIngestor(idx *index.Index, writer *storage.Writer, bufferSize int) *Ingestor {
+func NewIngestor(idx *index.Index, writer *storage.Writer, bufferSize int, broadcaster StreamBroadcaster) *Ingestor {
 	return &Ingestor{
-		index:    idx,
-		writer:   writer,
-		bufSize:  bufferSize,
-		buffers:  make(map[string]*logBuffer),
-		stopChan: make(chan struct{}),
+		index:       idx,
+		writer:      writer,
+		broadcaster: broadcaster,
+		bufSize:     bufferSize,
+		buffers:     make(map[string]*logBuffer),
+		stopChan:    make(chan struct{}),
 	}
 }
 
@@ -97,6 +104,11 @@ func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 			buf.entries = append(buf.entries, logEntry)
 			buf.size += len(entry.Line)
 			accepted++
+
+			// Broadcast to live stream subscribers
+			if ing.broadcaster != nil {
+				ing.broadcaster.Broadcast(&logEntry)
+			}
 
 			// Update metrics
 			ing.metricsMu.Lock()
@@ -161,7 +173,6 @@ func (ing *Ingestor) flushBuffer(hash string, buf *logBuffer) {
 		return
 	}
 
-	// Update index
 	ing.index.AddChunk(chunkID, buf.labels, startTime, endTime, len(buf.entries))
 	log.Printf("Flushed chunk %s with %d entries", chunkID, len(buf.entries))
 }

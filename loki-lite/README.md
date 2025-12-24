@@ -7,22 +7,28 @@ A Loki-inspired log aggregation system built in Go. Stores logs cheaply using la
 - **Label-based indexing** - Only indexes metadata, not log content
 - **Time-series chunks** - Efficient storage with time-based organization
 - **LogQL-style queries** - Familiar query syntax: `{service="api", env="prod"}`
+- **WebSocket streaming** - Real-time log tailing via `/stream` endpoint
+- **Log Agent** - Promtail-like agent for tailing files
 - **Prometheus metrics** - Built-in `/metrics` endpoint
-- **Zero dependencies** - Just Go standard library + gorilla/mux
+- **Zero dependencies** - Just Go standard library + gorilla packages
 - **Docker ready** - Easy containerized deployment
 
 ## Quick Start
 
-### Run Locally
+### Run Server Locally
 
 ```bash
-# Clone and build
 cd loki-lite
 go mod download
 go build -o lokilite ./cmd/server
-
-# Run
 ./lokilite
+```
+
+### Run Agent Locally
+
+```bash
+go build -o lokilite-agent ./cmd/agent
+./lokilite-agent -config configs/agent-config.yaml
 ```
 
 ### Run with Docker
@@ -34,6 +40,27 @@ docker-compose up -d
 
 Server starts at `http://localhost:8080`
 
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│   Log Agent     │────▶│   LokiLite      │
+│  (tail files)   │     │    Server       │
+└─────────────────┘     └────────┬────────┘
+                                 │
+                        ┌────────┴────────┐
+                        │                 │
+                   ┌────▼────┐     ┌──────▼──────┐
+                   │  REST   │     │  WebSocket  │
+                   │  /query │     │  /stream    │
+                   └─────────┘     └─────────────┘
+                                          │
+                                   ┌──────▼──────┐
+                                   │  Frontend   │
+                                   │  Dashboard  │
+                                   └─────────────┘
+```
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -44,6 +71,54 @@ Server starts at `http://localhost:8080`
 | `/query` | GET | Query logs |
 | `/labels` | GET | List all label keys |
 | `/labels/{name}/values` | GET | List values for a label |
+| `/stream` | WebSocket | Real-time log streaming |
+
+## WebSocket Streaming
+
+Connect to `/stream` for real-time logs:
+
+```javascript
+const ws = new WebSocket('ws://localhost:8080/stream?service=api-gateway');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'log') {
+    console.log(msg.data);
+  }
+};
+
+// Update filter
+ws.send(JSON.stringify({
+  type: 'filter',
+  labels: { level: 'error' }
+}));
+```
+
+## Log Agent
+
+The agent tails log files and sends them to the server:
+
+```yaml
+# agent-config.yaml
+server:
+  url: "http://localhost:8080"
+
+targets:
+  - path: "/var/log/*.log"
+    labels:
+      job: "varlogs"
+      env: "prod"
+
+  - path: "/app/logs/app.log"
+    labels:
+      service: "myapp"
+```
+
+Features:
+- Glob pattern support
+- Position tracking (survives restarts)
+- Auto log level detection
+- File rotation handling
 
 ## Usage Examples
 
@@ -70,104 +145,86 @@ curl -X POST http://localhost:8080/ingest \
 ### Query Logs
 
 ```bash
-# Query by labels
 curl "http://localhost:8080/query?query={service=\"api-gateway\"}&limit=50"
-
-# With time range
-curl "http://localhost:8080/query?query={level=\"error\"}&start=2024-01-15T00:00:00Z&end=2024-01-15T23:59:59Z"
 ```
 
-### Get Labels
-
-```bash
-# List all labels
-curl http://localhost:8080/labels
-
-# Get values for a label
-curl http://localhost:8080/labels/service/values
-```
-
-## Configuration
-
-Edit `configs/config.yaml` or use environment variables:
-
-| Env Variable | Default | Description |
-|--------------|---------|-------------|
-| `LOKILITE_PORT` | 8080 | Server port |
-| `LOKILITE_STORAGE_PATH` | ./data/logs | Log storage directory |
-| `LOKILITE_API_KEY` | (none) | Enable auth with this key |
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     HTTP API Layer                       │
-│   /ingest    /query    /labels    /health    /metrics   │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                   Ingestion Engine                       │
-│   • Buffers logs in memory                              │
-│   • Groups by label set                                 │
-│   • Flushes to chunks periodically                      │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                    Label Index                           │
-│   • In-memory map[labelHash] → []chunkID                │
-│   • Tracks all unique labels/values                     │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────┐
-│                   Storage Layer                          │
-│   • Writes JSON-line chunk files                        │
-│   • Organized by date/labels                            │
-│   • Retention worker cleans old data                    │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Generate Test Logs
+### Generate Test Logs
 
 ```bash
 chmod +x scripts/generate_logs.sh
-./scripts/generate_logs.sh 1000  # Generate 1000 random logs
-```
-
-## Integration
-
-### With Grafana
-
-1. Add JSON datasource pointing to `http://lokilite:8080/query`
-2. Use LogQL queries in dashboards
-
-### With Prometheus
-
-Prometheus can scrape the `/metrics` endpoint:
-
-```yaml
-scrape_configs:
-  - job_name: 'lokilite'
-    static_configs:
-      - targets: ['localhost:8080']
+./scripts/generate_logs.sh 1000
 ```
 
 ## Project Structure
 
 ```
 loki-lite/
-├── cmd/server/main.go       # Entry point
+├── cmd/
+│   ├── server/main.go      # Server entry point
+│   └── agent/main.go       # Agent entry point
 ├── internal/
-│   ├── api/                 # HTTP handlers
+│   ├── api/                 # HTTP + WebSocket handlers
 │   ├── config/              # Configuration
 │   ├── index/               # Label index
 │   ├── ingest/              # Ingestion logic
 │   ├── models/              # Data structures
 │   ├── query/               # Query engine
 │   └── storage/             # Disk I/O
-├── configs/config.yaml      # Default config
-├── docker/                  # Docker files
-└── scripts/                 # Test scripts
+├── configs/
+│   ├── config.yaml          # Server config
+│   └── agent-config.yaml    # Agent config
+├── docker/
+│   ├── Dockerfile           # Server container
+│   ├── Dockerfile.agent     # Agent container
+│   └── docker-compose.yml   # Full stack
+└── scripts/
+    └── generate_logs.sh     # Test data generator
 ```
+
+## Configuration
+
+### Server (config.yaml)
+
+```yaml
+server:
+  port: "8080"
+
+storage:
+  path: "./data/logs"
+  chunk_size_bytes: 1048576
+  retention_days: 7
+
+ingest:
+  buffer_size: 1000
+
+auth:
+  enabled: false
+  api_key: ""
+```
+
+### Agent (agent-config.yaml)
+
+```yaml
+server:
+  url: "http://localhost:8080"
+  api_key: ""
+
+positions_file: "./positions.json"
+
+targets:
+  - path: "/var/log/*.log"
+    labels:
+      job: "system"
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOKILITE_PORT` | 8080 | Server port |
+| `LOKILITE_STORAGE_PATH` | ./data/logs | Storage directory |
+| `LOKILITE_API_KEY` | (none) | Enable auth |
+| `LOKILITE_SERVER_URL` | http://localhost:8080 | Agent target |
 
 ## License
 
