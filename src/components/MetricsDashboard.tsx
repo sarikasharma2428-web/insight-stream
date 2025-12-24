@@ -132,8 +132,7 @@ export function MetricsDashboard({ isConnected }: MetricsDashboardProps) {
   if (!isConnected) {
     return (
       <div className="p-6 text-center text-muted-foreground">
-        <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p>Connect to backend to view metrics</p>
+        <p className="text-sm">Connect to backend to view metrics</p>
       </div>
     );
   }

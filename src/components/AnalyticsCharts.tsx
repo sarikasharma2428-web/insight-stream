@@ -203,7 +203,7 @@ export function AnalyticsCharts({ isConnected }: AnalyticsChartsProps) {
   if (!isConnected) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Connect to backend to view analytics
+        <p className="text-sm">Connect to backend to view analytics</p>
       </div>
     );
   }
