@@ -6,9 +6,12 @@ import { Sidebar } from '@/components/Sidebar';
 import { LogStats } from '@/components/LogStats';
 import { generateMockLogs, generateServiceStats, generateMockLog } from '@/data/mockLogs';
 import { LogEntry, ServiceStats } from '@/types/logs';
-import { Helmet } from 'react-helmet-async';
 
 const Index = () => {
+  // Set page title
+  useEffect(() => {
+    document.title = 'LokiClone - Log Aggregation Dashboard';
+  }, []);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [stats, setStats] = useState<ServiceStats[]>([]);
   const [selectedService, setSelectedService] = useState<string | null>(null);
@@ -70,12 +73,6 @@ const Index = () => {
     : logs;
 
   return (
-    <>
-      <Helmet>
-        <title>LokiClone - Log Aggregation Dashboard</title>
-        <meta name="description" content="A powerful, lightweight log aggregation system for collecting, storing, and querying application logs with label-based indexing." />
-      </Helmet>
-      
       <div className="h-screen flex flex-col bg-background overflow-hidden">
         <Header />
         
@@ -118,7 +115,6 @@ const Index = () => {
           </main>
         </div>
       </div>
-    </>
   );
 };
 
