@@ -58,7 +58,6 @@ class ApiClient {
   ): Promise<QueryResult> {
     const params = new URLSearchParams();
     
-    // Build LogQL-style query string
     const labelParts = Object.entries(labels)
       .map(([k, v]) => `${k}="${v}"`)
       .join(', ');
@@ -120,6 +119,62 @@ class ApiClient {
     }
     return response.text();
   }
+
+  async getAlerts(): Promise<AlertRule[]> {
+    const response = await fetch(`${this.getBaseUrl()}/alerts`, {
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get alerts: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async createAlert(alert: Omit<AlertRule, 'id' | 'createdAt'>): Promise<AlertRule> {
+    const response = await fetch(`${this.getBaseUrl()}/alerts`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(alert),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create alert: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async deleteAlert(id: string): Promise<void> {
+    const response = await fetch(`${this.getBaseUrl()}/alerts/${id}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete alert: ${response.status}`);
+    }
+  }
+
+  async updateAlertStatus(id: string, enabled: boolean): Promise<void> {
+    const response = await fetch(`${this.getBaseUrl()}/alerts/${id}/status`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ enabled }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update alert: ${response.status}`);
+    }
+  }
+}
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  query: string;
+  condition: 'gt' | 'lt' | 'eq' | 'gte' | 'lte';
+  threshold: number;
+  duration: string;
+  severity: 'critical' | 'warning' | 'info';
+  enabled: boolean;
+  createdAt: string;
+  webhook?: string;
 }
 
 export const apiClient = new ApiClient();

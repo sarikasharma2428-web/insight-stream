@@ -4,9 +4,16 @@ import { QueryBar } from '@/components/QueryBar';
 import { LogViewer } from '@/components/LogViewer';
 import { TestPanel } from '@/components/TestPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { LabelsExplorer } from '@/components/LabelsExplorer';
+import { MetricsDashboard } from '@/components/MetricsDashboard';
+import { AlertConfig } from '@/components/AlertConfig';
 import { LogEntry, BackendConfig, BackendHealth, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
+import { Search, Tag, Activity, Bell, FlaskConical } from 'lucide-react';
+
+type TabType = 'logs' | 'labels' | 'metrics' | 'alerts';
+type RightPanelType = 'test' | null;
 
 const Index = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -16,13 +23,13 @@ const Index = () => {
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [config, setConfig] = useState<BackendConfig | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('logs');
+  const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
 
-  // Set page title
   useEffect(() => {
     document.title = 'LokiClone - Log Aggregation Dashboard';
   }, []);
 
-  // Check for existing config on mount
   useEffect(() => {
     const savedConfig = apiClient.getConfig();
     if (savedConfig) {
@@ -31,7 +38,6 @@ const Index = () => {
     }
   }, []);
 
-  // Periodic health check
   useEffect(() => {
     if (!isConnected) return;
 
@@ -131,11 +137,17 @@ const Index = () => {
   }, [isConnected]);
 
   const handleRefresh = useCallback(() => {
-    // Re-run last query if connected
     if (isConnected) {
       handleQuery('{service="api-gateway"}', '1h');
     }
   }, [isConnected, handleQuery]);
+
+  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+    { id: 'logs', label: 'Logs', icon: <Search className="h-4 w-4" /> },
+    { id: 'labels', label: 'Labels', icon: <Tag className="h-4 w-4" /> },
+    { id: 'metrics', label: 'Metrics', icon: <Activity className="h-4 w-4" /> },
+    { id: 'alerts', label: 'Alerts', icon: <Bell className="h-4 w-4" /> },
+  ];
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
@@ -146,36 +158,95 @@ const Index = () => {
       />
       
       <div className="flex flex-1 overflow-hidden">
+        {/* Main content area */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          <QueryBar
-            onQuery={handleQuery}
-            onRefresh={handleRefresh}
-            isLoading={isLoading}
-            isConnected={isConnected}
-          />
-          
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="px-6 py-2 border-b border-border flex items-center justify-between">
-              <span className="text-sm text-muted-foreground font-mono">
-                {isConnected ? `Showing ${logs.length} logs` : 'Not connected'}
-              </span>
-              {isConnected && health && (
-                <span className="text-xs text-muted-foreground font-mono">
-                  Backend: {health.status}
-                </span>
-              )}
+          {/* Tab navigation */}
+          <div className="flex items-center border-b border-border px-4">
+            <div className="flex">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
             </div>
             
-            <LogViewer 
-              logs={logs} 
-              isLoading={isLoading}
-              isConnected={isConnected}
-              queryStats={queryStats}
-            />
+            <div className="ml-auto">
+              <button
+                onClick={() => setRightPanel(rightPanel === 'test' ? null : 'test')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  rightPanel === 'test'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                <FlaskConical className="h-4 w-4" />
+                Test Panel
+              </button>
+            </div>
+          </div>
+          
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden flex">
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {activeTab === 'logs' && (
+                <>
+                  <QueryBar
+                    onQuery={handleQuery}
+                    onRefresh={handleRefresh}
+                    isLoading={isLoading}
+                    isConnected={isConnected}
+                  />
+                  
+                  <div className="flex-1 overflow-hidden flex flex-col">
+                    <div className="px-6 py-2 border-b border-border flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground font-mono">
+                        {isConnected ? `Showing ${logs.length} logs` : 'Not connected'}
+                      </span>
+                      {isConnected && health && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          Backend: {health.status}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <LogViewer 
+                      logs={logs} 
+                      isLoading={isLoading}
+                      isConnected={isConnected}
+                      queryStats={queryStats}
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'labels' && (
+                <LabelsExplorer isConnected={isConnected} />
+              )}
+
+              {activeTab === 'metrics' && (
+                <MetricsDashboard isConnected={isConnected} />
+              )}
+
+              {activeTab === 'alerts' && (
+                <AlertConfig isConnected={isConnected} />
+              )}
+            </div>
+
+            {/* Right panel */}
+            {rightPanel === 'test' && (
+              <TestPanel isConnected={isConnected} />
+            )}
           </div>
         </main>
-
-        <TestPanel isConnected={isConnected} />
       </div>
 
       <SettingsPanel
