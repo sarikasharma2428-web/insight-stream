@@ -7,7 +7,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /lokilite-agent ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux go build -o /logpulse-agent ./cmd/agent
 
 FROM alpine:3.19
 
@@ -15,7 +15,7 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /lokilite-agent /app/lokilite-agent
+COPY --from=builder /logpulse-agent /app/logpulse-agent
 COPY configs/agent-config.yaml /app/agent-config.yaml
 
-CMD ["/app/lokilite-agent", "-config", "/app/agent-config.yaml"]
+CMD ["/app/logpulse-agent", "-config", "/app/agent-config.yaml"]

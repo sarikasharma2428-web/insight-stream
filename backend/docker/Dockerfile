@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /lokilite ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /logpulse ./cmd/server
 
 # Runtime image
 FROM alpine:3.19
@@ -19,7 +19,7 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /lokilite /app/lokilite
+COPY --from=builder /logpulse /app/logpulse
 COPY configs/config.yaml /app/configs/config.yaml
 
 # Create data directory
@@ -27,4 +27,4 @@ RUN mkdir -p /app/data/logs
 
 EXPOSE 8080
 
-CMD ["/app/lokilite"]
+CMD ["/app/logpulse"]

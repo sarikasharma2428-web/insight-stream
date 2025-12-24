@@ -33,8 +33,8 @@ export function Header({ health, status, error, onSettingsClick, onReconnect }: 
               } ${isConnected ? 'pulse-dot' : ''}`} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">
-                LOKI<span className="text-primary">CLONE</span>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">
+                LOG<span className="text-primary">PULSE</span>
               </h1>
               <p className="text-xs text-muted-foreground font-mono">
                 {status === 'connected' ? 'Connected to backend' : 
