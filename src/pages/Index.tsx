@@ -8,12 +8,14 @@ import { LabelsExplorer } from '@/components/LabelsExplorer';
 import { MetricsDashboard } from '@/components/MetricsDashboard';
 import { AlertConfig } from '@/components/AlertConfig';
 import { LiveStream } from '@/components/LiveStream';
+import { AnalyticsCharts } from '@/components/AnalyticsCharts';
+import { SavedSearches } from '@/components/SavedSearches';
 import { LogEntry, BackendConfig, BackendHealth, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Search, Tag, Activity, Bell, FlaskConical, Radio } from 'lucide-react';
+import { Search, Tag, Activity, Bell, FlaskConical, Radio, BarChart3, Bookmark } from 'lucide-react';
 
-type TabType = 'logs' | 'live' | 'labels' | 'metrics' | 'alerts';
+type TabType = 'logs' | 'live' | 'labels' | 'metrics' | 'analytics' | 'alerts';
 type RightPanelType = 'test' | null;
 
 const Index = () => {
@@ -26,7 +28,8 @@ const Index = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('logs');
   const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
-
+  const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
+  const [currentTimeRange, setCurrentTimeRange] = useState('1h');
   useEffect(() => {
     document.title = 'LokiClone - Log Aggregation Dashboard';
   }, []);
@@ -120,6 +123,8 @@ const Index = () => {
   const handleQuery = useCallback(async (query: string, timeRange: string) => {
     if (!isConnected) return;
 
+    setCurrentQuery(query);
+    setCurrentTimeRange(timeRange);
     setIsLoading(true);
     try {
       const labels = parseQuery(query);
@@ -148,6 +153,7 @@ const Index = () => {
     { id: 'live', label: 'Live', icon: <Radio className="h-4 w-4" /> },
     { id: 'labels', label: 'Labels', icon: <Tag className="h-4 w-4" /> },
     { id: 'metrics', label: 'Metrics', icon: <Activity className="h-4 w-4" /> },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
     { id: 'alerts', label: 'Alerts', icon: <Bell className="h-4 w-4" /> },
   ];
 
@@ -210,24 +216,35 @@ const Index = () => {
                     isConnected={isConnected}
                   />
                   
-                  <div className="flex-1 overflow-hidden flex flex-col">
-                    <div className="px-6 py-2 border-b border-border flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground font-mono">
-                        {isConnected ? `Showing ${logs.length} logs` : 'Not connected'}
-                      </span>
-                      {isConnected && health && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          Backend: {health.status}
-                        </span>
-                      )}
+                  <div className="flex-1 overflow-hidden flex">
+                    {/* Saved Searches Sidebar */}
+                    <div className="w-64 border-r border-border bg-card/50">
+                      <SavedSearches
+                        onExecuteSearch={handleQuery}
+                        currentQuery={currentQuery}
+                        currentTimeRange={currentTimeRange}
+                      />
                     </div>
                     
-                    <LogViewer 
-                      logs={logs} 
-                      isLoading={isLoading}
-                      isConnected={isConnected}
-                      queryStats={queryStats}
-                    />
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="px-6 py-2 border-b border-border flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {isConnected ? `Showing ${logs.length} logs` : 'Not connected'}
+                        </span>
+                        {isConnected && health && (
+                          <span className="text-xs text-muted-foreground font-mono">
+                            Backend: {health.status}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <LogViewer 
+                        logs={logs} 
+                        isLoading={isLoading}
+                        isConnected={isConnected}
+                        queryStats={queryStats}
+                      />
+                    </div>
                   </div>
                 </>
               )}
@@ -242,6 +259,10 @@ const Index = () => {
 
               {activeTab === 'metrics' && (
                 <MetricsDashboard isConnected={isConnected} />
+              )}
+
+              {activeTab === 'analytics' && (
+                <AnalyticsCharts isConnected={isConnected} />
               )}
 
               {activeTab === 'alerts' && (
