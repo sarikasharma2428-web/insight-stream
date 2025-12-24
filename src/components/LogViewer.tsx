@@ -1,22 +1,45 @@
 import { LogEntry, LogLevel } from '@/types/logs';
-import { ChevronRight, Copy, ExternalLink } from 'lucide-react';
+import { ChevronRight, Copy, Database } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 interface LogViewerProps {
   logs: LogEntry[];
   isLoading?: boolean;
+  isConnected: boolean;
+  queryStats?: {
+    queriedChunks: number;
+    scannedLines: number;
+    executionTime: number;
+  };
 }
 
-export function LogViewer({ logs, isLoading }: LogViewerProps) {
+export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewerProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (!isConnected) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <Database className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Backend Not Connected</h2>
+          <p className="text-muted-foreground mb-4">
+            Configure your Go backend URL in settings to start querying logs.
+          </p>
+          <p className="text-sm text-muted-foreground font-mono bg-muted p-3 rounded-lg">
+            Expected endpoints: /health, /query, /ingest
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="h-12 w-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground font-mono">Loading logs...</p>
+          <p className="text-muted-foreground font-mono">Querying backend...</p>
         </div>
       </div>
     );
@@ -27,15 +50,30 @@ export function LogViewer({ logs, isLoading }: LogViewerProps) {
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <p className="text-xl text-muted-foreground">No logs found</p>
-          <p className="text-sm text-muted-foreground mt-2">Try adjusting your query or time range</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Try adjusting your query or use the Test Panel to inject test logs
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto scrollbar-thin">
-      <div className="divide-y divide-border/50">
+    <div className="flex-1 overflow-auto scrollbar-thin flex flex-col">
+      {queryStats && (
+        <div className="px-6 py-2 bg-muted/30 border-b border-border flex items-center gap-6 text-xs font-mono">
+          <span className="text-muted-foreground">
+            Chunks: <span className="text-foreground">{queryStats.queriedChunks}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Lines scanned: <span className="text-foreground">{queryStats.scannedLines}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Execution: <span className="text-primary">{queryStats.executionTime}ms</span>
+          </span>
+        </div>
+      )}
+      <div className="divide-y divide-border/50 flex-1">
         {logs.map((log, index) => (
           <LogLine
             key={log.id}
@@ -58,6 +96,8 @@ interface LogLineProps {
 }
 
 function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
+  const level = (log.labels?.level as LogLevel) || 'info';
+  
   const levelStyles: Record<LogLevel, string> = {
     error: 'log-level-error',
     warn: 'log-level-warn',
@@ -78,9 +118,12 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
     toast.success('Log copied to clipboard');
   };
 
+  const service = log.labels?.service || 'unknown';
+  const env = log.labels?.env || log.labels?.environment || '';
+
   return (
     <div
-      className={`${levelStyles[log.level]} cursor-pointer animate-log-appear`}
+      className={`${levelStyles[level]} cursor-pointer animate-log-appear`}
       style={{ animationDelay: `${delay}ms` }}
       onClick={onToggle}
     >
@@ -92,19 +135,19 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
         />
         
         <span className="text-muted-foreground font-mono text-xs flex-shrink-0 w-[180px]">
-          {log.timestamp.toISOString().replace('T', ' ').slice(0, 23)}
+          {log.timestamp}
         </span>
 
         <span
           className={`text-xs font-mono uppercase px-2 py-0.5 rounded border flex-shrink-0 w-[60px] text-center ${
-            levelBadgeStyles[log.level]
+            levelBadgeStyles[level]
           }`}
         >
-          {log.level}
+          {level}
         </span>
 
-        <span className="label-badge flex-shrink-0">{log.service}</span>
-        <span className="label-badge flex-shrink-0">{log.environment}</span>
+        <span className="label-badge flex-shrink-0">{service}</span>
+        {env && <span className="label-badge flex-shrink-0">{env}</span>}
 
         <span className="font-mono text-sm truncate flex-1">{log.message}</span>
 
@@ -123,10 +166,10 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
               <div>
                 <p className="text-muted-foreground text-xs mb-2">Labels</p>
                 <div className="flex flex-wrap gap-2">
-                  {log.labels.map((label) => (
-                    <span key={label.key} className="label-badge">
-                      <span className="text-muted-foreground">{label.key}=</span>
-                      <span className="text-primary">"{label.value}"</span>
+                  {Object.entries(log.labels).map(([key, value]) => (
+                    <span key={key} className="label-badge">
+                      <span className="text-muted-foreground">{key}=</span>
+                      <span className="text-primary">"{value}"</span>
                     </span>
                   ))}
                 </div>
@@ -140,7 +183,7 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
                   </p>
                   <p>
                     <span className="text-muted-foreground">Timestamp: </span>
-                    <span className="text-foreground">{log.timestamp.toISOString()}</span>
+                    <span className="text-foreground">{log.timestamp}</span>
                   </p>
                 </div>
               </div>

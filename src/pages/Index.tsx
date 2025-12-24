@@ -2,119 +2,190 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { QueryBar } from '@/components/QueryBar';
 import { LogViewer } from '@/components/LogViewer';
-import { Sidebar } from '@/components/Sidebar';
-import { LogStats } from '@/components/LogStats';
-import { generateMockLogs, generateServiceStats, generateMockLog } from '@/data/mockLogs';
-import { LogEntry, ServiceStats } from '@/types/logs';
+import { TestPanel } from '@/components/TestPanel';
+import { SettingsPanel } from '@/components/SettingsPanel';
+import { LogEntry, BackendConfig, BackendHealth, QueryResult } from '@/types/logs';
+import { apiClient } from '@/lib/api';
+import { toast } from 'sonner';
 
 const Index = () => {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [queryStats, setQueryStats] = useState<QueryResult['stats'] | undefined>();
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [health, setHealth] = useState<BackendHealth | null>(null);
+  const [config, setConfig] = useState<BackendConfig | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
   // Set page title
   useEffect(() => {
     document.title = 'LokiClone - Log Aggregation Dashboard';
   }, []);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [stats, setStats] = useState<ServiceStats[]>([]);
-  const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLive, setIsLive] = useState(false);
 
-  // Initial load
+  // Check for existing config on mount
   useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setLogs(generateMockLogs(100));
-      setStats(generateServiceStats());
-      setIsLoading(false);
-    }, 800);
+    const savedConfig = apiClient.getConfig();
+    if (savedConfig) {
+      setConfig(savedConfig);
+      checkConnection(savedConfig);
+    }
   }, []);
 
-  // Live mode - add new logs periodically
+  // Periodic health check
   useEffect(() => {
-    if (!isLive) return;
+    if (!isConnected) return;
 
-    const interval = setInterval(() => {
-      const newLog = generateMockLog(new Date());
-      setLogs((prev) => [newLog, ...prev.slice(0, 199)]);
-    }, Math.random() * 2000 + 500);
+    const interval = setInterval(async () => {
+      try {
+        const healthData = await apiClient.health();
+        setHealth(healthData);
+      } catch {
+        setIsConnected(false);
+        setHealth(null);
+        toast.error('Lost connection to backend');
+      }
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [isLive]);
+  }, [isConnected]);
 
-  const handleQuery = useCallback((query: string) => {
-    setIsLoading(true);
-    // Simulate query execution
-    setTimeout(() => {
-      setLogs(generateMockLogs(Math.floor(Math.random() * 50) + 50));
-      setIsLoading(false);
-    }, 500);
-  }, []);
+  const checkConnection = async (cfg: BackendConfig) => {
+    try {
+      apiClient.setConfig(cfg);
+      const healthData = await apiClient.health();
+      setHealth(healthData);
+      setIsConnected(true);
+    } catch {
+      setIsConnected(false);
+      setHealth(null);
+    }
+  };
 
-  const handleTimeRangeChange = useCallback((range: string) => {
+  const handleSaveConfig = (newConfig: BackendConfig) => {
+    apiClient.setConfig(newConfig);
+    setConfig(newConfig);
+    checkConnection(newConfig);
+  };
+
+  const handleDisconnect = () => {
+    apiClient.clearConfig();
+    setConfig(null);
+    setIsConnected(false);
+    setHealth(null);
+    setLogs([]);
+    setQueryStats(undefined);
+  };
+
+  const parseQuery = (query: string): Record<string, string> => {
+    const labels: Record<string, string> = {};
+    const match = query.match(/\{(.+)\}/);
+    if (match) {
+      const pairs = match[1].split(',');
+      pairs.forEach((pair) => {
+        const [key, value] = pair.split('=').map((s) => s.trim().replace(/"/g, ''));
+        if (key && value) {
+          labels[key] = value;
+        }
+      });
+    }
+    return labels;
+  };
+
+  const getTimeRange = (range: string): { start: string; end: string } => {
+    const now = new Date();
+    const durations: Record<string, number> = {
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+    };
+
+    const duration = durations[range] || durations['1h'];
+    const start = new Date(now.getTime() - duration);
+
+    return {
+      start: start.toISOString(),
+      end: now.toISOString(),
+    };
+  };
+
+  const handleQuery = useCallback(async (query: string, timeRange: string) => {
+    if (!isConnected) return;
+
     setIsLoading(true);
-    setTimeout(() => {
-      const count = range === '5m' ? 30 : range === '15m' ? 60 : range === '1h' ? 100 : 200;
-      setLogs(generateMockLogs(count));
+    try {
+      const labels = parseQuery(query);
+      const { start, end } = getTimeRange(timeRange);
+      
+      const result = await apiClient.query(labels, start, end);
+      setLogs(result.logs);
+      setQueryStats(result.stats);
+    } catch (error) {
+      toast.error('Query failed. Check your query syntax and backend connection.');
+      setLogs([]);
+      setQueryStats(undefined);
+    } finally {
       setIsLoading(false);
-    }, 300);
-  }, []);
+    }
+  }, [isConnected]);
 
   const handleRefresh = useCallback(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setLogs(generateMockLogs(100));
-      setStats(generateServiceStats());
-      setIsLoading(false);
-    }, 500);
-  }, []);
-
-  // Filter logs by selected service
-  const filteredLogs = selectedService
-    ? logs.filter((log) => log.service === selectedService)
-    : logs;
+    // Re-run last query if connected
+    if (isConnected) {
+      handleQuery('{service="api-gateway"}', '1h');
+    }
+  }, [isConnected, handleQuery]);
 
   return (
-      <div className="h-screen flex flex-col bg-background overflow-hidden">
-        <Header />
-        
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar
-            stats={stats}
-            selectedService={selectedService}
-            onServiceSelect={setSelectedService}
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <Header 
+        health={health}
+        isConnected={isConnected}
+        onSettingsClick={() => setShowSettings(true)}
+      />
+      
+      <div className="flex flex-1 overflow-hidden">
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <QueryBar
+            onQuery={handleQuery}
+            onRefresh={handleRefresh}
+            isLoading={isLoading}
+            isConnected={isConnected}
           />
           
-          <main className="flex-1 flex flex-col overflow-hidden">
-            <QueryBar
-              onQuery={handleQuery}
-              onTimeRangeChange={handleTimeRangeChange}
-              onRefresh={handleRefresh}
-              isLive={isLive}
-              onToggleLive={() => setIsLive(!isLive)}
-            />
-            
-            <LogStats logs={filteredLogs} />
-            
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="px-6 py-2 border-b border-border flex items-center justify-between">
-                <span className="text-sm text-muted-foreground font-mono">
-                  Showing {filteredLogs.length} logs
-                  {selectedService && (
-                    <span className="text-primary"> • {selectedService}</span>
-                  )}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="px-6 py-2 border-b border-border flex items-center justify-between">
+              <span className="text-sm text-muted-foreground font-mono">
+                {isConnected ? `Showing ${logs.length} logs` : 'Not connected'}
+              </span>
+              {isConnected && health && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  Backend: {health.status}
                 </span>
-                {isLive && (
-                  <span className="flex items-center gap-2 text-sm text-success font-mono">
-                    <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                    Streaming live logs...
-                  </span>
-                )}
-              </div>
-              
-              <LogViewer logs={filteredLogs} isLoading={isLoading} />
+              )}
             </div>
-          </main>
-        </div>
+            
+            <LogViewer 
+              logs={logs} 
+              isLoading={isLoading}
+              isConnected={isConnected}
+              queryStats={queryStats}
+            />
+          </div>
+        </main>
+
+        <TestPanel isConnected={isConnected} />
       </div>
+
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        config={config}
+        onSave={handleSaveConfig}
+        onDisconnect={handleDisconnect}
+      />
+    </div>
   );
 };
 
