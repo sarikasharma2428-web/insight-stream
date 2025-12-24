@@ -1,4 +1,4 @@
-module github.com/yourusername/loki-lite
+module github.com/logpulse/backend
 
 go 1.21
 
