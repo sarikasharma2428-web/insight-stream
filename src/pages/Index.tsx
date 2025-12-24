@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { QueryBar } from '@/components/QueryBar';
 import { LogViewer } from '@/components/LogViewer';
@@ -10,10 +10,11 @@ import { AlertConfig } from '@/components/AlertConfig';
 import { LiveStream } from '@/components/LiveStream';
 import { AnalyticsCharts } from '@/components/AnalyticsCharts';
 import { SavedSearches } from '@/components/SavedSearches';
-import { LogEntry, BackendConfig, BackendHealth, QueryResult } from '@/types/logs';
+import { useBackendConnection } from '@/hooks/useBackendConnection';
+import { LogEntry, BackendConfig, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Search, Tag, Activity, Bell, FlaskConical, Radio, BarChart3, Bookmark } from 'lucide-react';
+import { Search, Tag, Activity, Bell, FlaskConical, Radio, BarChart3 } from 'lucide-react';
 
 type TabType = 'logs' | 'live' | 'labels' | 'metrics' | 'analytics' | 'alerts';
 type RightPanelType = 'test' | null;
@@ -22,69 +23,23 @@ const Index = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [queryStats, setQueryStats] = useState<QueryResult['stats'] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [health, setHealth] = useState<BackendHealth | null>(null);
-  const [config, setConfig] = useState<BackendConfig | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('logs');
   const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
   const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
   const [currentTimeRange, setCurrentTimeRange] = useState('1h');
-  useEffect(() => {
-    document.title = 'LokiClone - Log Aggregation Dashboard';
-  }, []);
 
-  useEffect(() => {
-    const savedConfig = apiClient.getConfig();
-    if (savedConfig) {
-      setConfig(savedConfig);
-      checkConnection(savedConfig);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const healthData = await apiClient.health();
-        setHealth(healthData);
-      } catch {
-        setIsConnected(false);
-        setHealth(null);
-        toast.error('Lost connection to backend');
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [isConnected]);
-
-  const checkConnection = async (cfg: BackendConfig) => {
-    try {
-      apiClient.setConfig(cfg);
-      const healthData = await apiClient.health();
-      setHealth(healthData);
-      setIsConnected(true);
-    } catch {
-      setIsConnected(false);
-      setHealth(null);
-    }
-  };
-
-  const handleSaveConfig = (newConfig: BackendConfig) => {
-    apiClient.setConfig(newConfig);
-    setConfig(newConfig);
-    checkConnection(newConfig);
-  };
-
-  const handleDisconnect = () => {
-    apiClient.clearConfig();
-    setConfig(null);
-    setIsConnected(false);
-    setHealth(null);
-    setLogs([]);
-    setQueryStats(undefined);
-  };
+  // Use the backend connection hook
+  const { 
+    status, 
+    health, 
+    config, 
+    error, 
+    connect, 
+    disconnect, 
+    reconnect, 
+    isConnected 
+  } = useBackendConnection();
 
   const parseQuery = (query: string): Record<string, string> => {
     const labels: Record<string, string> = {};
@@ -126,15 +81,22 @@ const Index = () => {
     setCurrentQuery(query);
     setCurrentTimeRange(timeRange);
     setIsLoading(true);
+    
     try {
       const labels = parseQuery(query);
       const { start, end } = getTimeRange(timeRange);
       
+      console.log('[Query] Executing:', { query, labels, start, end });
       const result = await apiClient.query(labels, start, end);
+      
       setLogs(result.logs);
       setQueryStats(result.stats);
-    } catch (error) {
-      toast.error('Query failed. Check your query syntax and backend connection.');
+      
+      console.log('[Query] Results:', { count: result.logs.length, stats: result.stats });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Query failed';
+      console.error('[Query] Error:', errorMessage);
+      toast.error('Query failed', { description: errorMessage });
       setLogs([]);
       setQueryStats(undefined);
     } finally {
@@ -144,9 +106,23 @@ const Index = () => {
 
   const handleRefresh = useCallback(() => {
     if (isConnected) {
-      handleQuery('{service="api-gateway"}', '1h');
+      handleQuery(currentQuery, currentTimeRange);
     }
-  }, [isConnected, handleQuery]);
+  }, [isConnected, handleQuery, currentQuery, currentTimeRange]);
+
+  const handleSaveConfig = async (newConfig: BackendConfig) => {
+    const success = await connect(newConfig);
+    if (success) {
+      setShowSettings(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    disconnect();
+    setLogs([]);
+    setQueryStats(undefined);
+    setShowSettings(false);
+  };
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'logs', label: 'Logs', icon: <Search className="h-4 w-4" /> },
@@ -161,8 +137,10 @@ const Index = () => {
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Header 
         health={health}
-        isConnected={isConnected}
+        status={status}
+        error={error}
         onSettingsClick={() => setShowSettings(true)}
+        onReconnect={reconnect}
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -182,7 +160,7 @@ const Index = () => {
                 >
                   {tab.icon}
                   {tab.label}
-                  {tab.id === 'live' && (
+                  {tab.id === 'live' && isConnected && (
                     <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
                   )}
                 </button>

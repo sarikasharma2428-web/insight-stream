@@ -1,15 +1,20 @@
-import { Activity, Database, Cpu, Clock, Settings, AlertCircle } from 'lucide-react';
+import { Activity, Database, Cpu, Clock, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackendHealth } from '@/types/logs';
+import { ConnectionStatus } from '@/components/ConnectionStatus';
+import { ConnectionStatus as ConnectionStatusType } from '@/hooks/useBackendConnection';
 
 interface HeaderProps {
   health: BackendHealth | null;
-  isConnected: boolean;
+  status: ConnectionStatusType;
+  error: string | null;
   onSettingsClick: () => void;
+  onReconnect: () => void;
 }
 
-export function Header({ health, isConnected, onSettingsClick }: HeaderProps) {
+export function Header({ health, status, error, onSettingsClick, onReconnect }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const isConnected = status === 'connected';
   
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -24,7 +29,7 @@ export function Header({ health, isConnected, onSettingsClick }: HeaderProps) {
             <div className="relative">
               <Database className="h-8 w-8 text-primary" />
               <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full ${
-                isConnected ? 'bg-success' : 'bg-destructive'
+                isConnected ? 'bg-success' : status === 'connecting' || status === 'reconnecting' ? 'bg-info animate-pulse' : 'bg-destructive'
               } ${isConnected ? 'pulse-dot' : ''}`} />
             </div>
             <div>
@@ -32,7 +37,11 @@ export function Header({ health, isConnected, onSettingsClick }: HeaderProps) {
                 LOKI<span className="text-primary">CLONE</span>
               </h1>
               <p className="text-xs text-muted-foreground font-mono">
-                {isConnected ? 'Connected to backend' : 'Backend not configured'}
+                {status === 'connected' ? 'Connected to backend' : 
+                 status === 'connecting' ? 'Connecting...' :
+                 status === 'reconnecting' ? 'Reconnecting...' :
+                 status === 'error' ? 'Connection failed' :
+                 'Backend not configured'}
               </p>
             </div>
           </div>
@@ -61,10 +70,13 @@ export function Header({ health, isConnected, onSettingsClick }: HeaderProps) {
               />
             </>
           ) : (
-            <div className="flex items-center gap-2 text-warning">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">Configure backend to see stats</span>
-            </div>
+            <ConnectionStatus
+              status={status}
+              health={health}
+              error={error}
+              onReconnect={onReconnect}
+              onSettingsClick={onSettingsClick}
+            />
           )}
           
           <div className="flex items-center gap-2 text-muted-foreground font-mono text-sm border-l border-border pl-6">
