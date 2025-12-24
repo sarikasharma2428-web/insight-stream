@@ -1,7 +1,8 @@
 import { LogEntry, LogLevel } from '@/types/logs';
-import { ChevronRight, Copy, Database } from 'lucide-react';
+import { ChevronRight, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { LogExport } from './LogExport';
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -55,19 +56,27 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
 
   return (
     <div className="flex-1 overflow-auto scrollbar-thin flex flex-col">
-      {queryStats && (
-        <div className="px-6 py-2 bg-muted/30 border-b border-border flex items-center gap-6 text-xs font-mono">
+      <div className="px-6 py-2 bg-muted/30 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-6 text-xs font-mono">
+          {queryStats && (
+            <>
+              <span className="text-muted-foreground">
+                Chunks: <span className="text-foreground">{queryStats.queriedChunks}</span>
+              </span>
+              <span className="text-muted-foreground">
+                Lines scanned: <span className="text-foreground">{queryStats.scannedLines}</span>
+              </span>
+              <span className="text-muted-foreground">
+                Execution: <span className="text-primary">{queryStats.executionTime}ms</span>
+              </span>
+            </>
+          )}
           <span className="text-muted-foreground">
-            Chunks: <span className="text-foreground">{queryStats.queriedChunks}</span>
-          </span>
-          <span className="text-muted-foreground">
-            Lines scanned: <span className="text-foreground">{queryStats.scannedLines}</span>
-          </span>
-          <span className="text-muted-foreground">
-            Execution: <span className="text-primary">{queryStats.executionTime}ms</span>
+            Results: <span className="text-foreground">{logs.length}</span>
           </span>
         </div>
-      )}
+        <LogExport logs={logs} />
+      </div>
       <div className="divide-y divide-border/50 flex-1">
         {logs.map((log, index) => (
           <LogLine
