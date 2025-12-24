@@ -1,7 +1,14 @@
-import { Activity, Database, Cpu, Clock } from 'lucide-react';
+import { Activity, Database, Cpu, Clock, Settings, AlertCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { BackendHealth } from '@/types/logs';
 
-export function Header() {
+interface HeaderProps {
+  health: BackendHealth | null;
+  isConnected: boolean;
+  onSettingsClick: () => void;
+}
+
+export function Header({ health, isConnected, onSettingsClick }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   
   useEffect(() => {
@@ -16,41 +23,61 @@ export function Header() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Database className="h-8 w-8 text-primary" />
-              <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-success pulse-dot" />
+              <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full ${
+                isConnected ? 'bg-success' : 'bg-destructive'
+              } ${isConnected ? 'pulse-dot' : ''}`} />
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground tracking-tight">
                 LOKI<span className="text-primary">CLONE</span>
               </h1>
-              <p className="text-xs text-muted-foreground font-mono">Log Aggregation System v1.0</p>
+              <p className="text-xs text-muted-foreground font-mono">
+                {isConnected ? 'Connected to backend' : 'Backend not configured'}
+              </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-6">
-          <StatusIndicator 
-            icon={<Activity className="h-4 w-4" />}
-            label="Ingestion"
-            value="1.2K/s"
-            status="success"
-          />
-          <StatusIndicator 
-            icon={<Cpu className="h-4 w-4" />}
-            label="CPU"
-            value="23%"
-            status="success"
-          />
-          <StatusIndicator 
-            icon={<Database className="h-4 w-4" />}
-            label="Storage"
-            value="45.2 GB"
-            status="warning"
-          />
+          {isConnected && health ? (
+            <>
+              <StatusIndicator 
+                icon={<Activity className="h-4 w-4" />}
+                label="Ingestion"
+                value={`${health.ingestionRate}/s`}
+                status="success"
+              />
+              <StatusIndicator 
+                icon={<Database className="h-4 w-4" />}
+                label="Chunks"
+                value={health.chunksCount.toString()}
+                status="success"
+              />
+              <StatusIndicator 
+                icon={<Cpu className="h-4 w-4" />}
+                label="Storage"
+                value={formatBytes(health.storageUsed)}
+                status={health.storageUsed > 1000000000 ? 'warning' : 'success'}
+              />
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-warning">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Configure backend to see stats</span>
+            </div>
+          )}
           
           <div className="flex items-center gap-2 text-muted-foreground font-mono text-sm border-l border-border pl-6">
             <Clock className="h-4 w-4" />
             <span>{currentTime.toLocaleTimeString()}</span>
           </div>
+
+          <button
+            onClick={onSettingsClick}
+            className="p-2 rounded-lg hover:bg-muted transition-colors"
+          >
+            <Settings className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+          </button>
         </div>
       </div>
     </header>
@@ -80,4 +107,12 @@ function StatusIndicator({ icon, label, value, status }: StatusIndicatorProps) {
       </div>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }

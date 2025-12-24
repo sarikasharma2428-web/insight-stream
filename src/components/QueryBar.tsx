@@ -1,27 +1,29 @@
-import { Search, Play, Clock, RefreshCw } from 'lucide-react';
+import { Search, Play, Clock, RefreshCw, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { timeRanges } from '@/data/mockLogs';
+
+const timeRanges = [
+  { label: 'Last 5 minutes', value: '5m', duration: 5 },
+  { label: 'Last 15 minutes', value: '15m', duration: 15 },
+  { label: 'Last 1 hour', value: '1h', duration: 60 },
+  { label: 'Last 6 hours', value: '6h', duration: 360 },
+];
 
 interface QueryBarProps {
-  onQuery: (query: string) => void;
-  onTimeRangeChange: (range: string) => void;
+  onQuery: (query: string, timeRange: string) => void;
   onRefresh: () => void;
-  isLive: boolean;
-  onToggleLive: () => void;
+  isLoading: boolean;
+  isConnected: boolean;
 }
 
-export function QueryBar({ onQuery, onTimeRangeChange, onRefresh, isLive, onToggleLive }: QueryBarProps) {
+export function QueryBar({ onQuery, onRefresh, isLoading, isConnected }: QueryBarProps) {
   const [query, setQuery] = useState('{service="api-gateway"}');
   const [selectedRange, setSelectedRange] = useState('1h');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onQuery(query);
-  };
-
-  const handleRangeChange = (value: string) => {
-    setSelectedRange(value);
-    onTimeRangeChange(value);
+    if (isConnected) {
+      onQuery(query, selectedRange);
+    }
   };
 
   return (
@@ -35,16 +37,17 @@ export function QueryBar({ onQuery, onTimeRangeChange, onRefresh, isLive, onTogg
             onChange={(e) => setQuery(e.target.value)}
             placeholder='{service="api-gateway", env="prod"}'
             className="query-input w-full pl-12 pr-4"
+            disabled={!isConnected}
           />
         </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-            {timeRanges.slice(0, 4).map((range) => (
+            {timeRanges.map((range) => (
               <button
                 key={range.value}
                 type="button"
-                onClick={() => handleRangeChange(range.value)}
+                onClick={() => setSelectedRange(range.value)}
                 className={`px-3 py-1.5 text-sm font-mono rounded transition-all ${
                   selectedRange === range.value
                     ? 'bg-primary text-primary-foreground'
@@ -58,30 +61,23 @@ export function QueryBar({ onQuery, onTimeRangeChange, onRefresh, isLive, onTogg
 
           <button
             type="button"
-            onClick={onToggleLive}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm transition-all ${
-              isLive
-                ? 'bg-success/20 text-success border border-success/30 glow-success'
-                : 'bg-muted text-muted-foreground hover:text-foreground border border-border'
-            }`}
-          >
-            <div className={`h-2 w-2 rounded-full ${isLive ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
-            LIVE
-          </button>
-
-          <button
-            type="button"
             onClick={onRefresh}
-            className="p-2 rounded-lg bg-muted text-muted-foreground hover:text-foreground border border-border transition-all hover:border-primary/50"
+            disabled={!isConnected || isLoading}
+            className="p-2 rounded-lg bg-muted text-muted-foreground hover:text-foreground border border-border transition-all hover:border-primary/50 disabled:opacity-50"
           >
-            <RefreshCw className="h-5 w-5" />
+            <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
 
           <button
             type="submit"
-            className="flex items-center gap-2 px-6 py-2 rounded-lg bg-primary text-primary-foreground font-semibold transition-all hover:opacity-90 glow-primary"
+            disabled={!isConnected || isLoading}
+            className="flex items-center gap-2 px-6 py-2 rounded-lg bg-primary text-primary-foreground font-semibold transition-all hover:opacity-90 glow-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Play className="h-4 w-4" />
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
             Run Query
           </button>
         </div>
@@ -94,12 +90,7 @@ export function QueryBar({ onQuery, onTimeRangeChange, onRefresh, isLive, onTogg
           {'{'}label="value", label2="value2"{'}'}
         </code>
         <span className="text-muted-foreground">|</span>
-        <span className="text-muted-foreground">Supported labels:</span>
-        <span className="label-badge">service</span>
-        <span className="label-badge">env</span>
-        <span className="label-badge">level</span>
-        <span className="label-badge">host</span>
-        <span className="label-badge">region</span>
+        <span className="text-muted-foreground">Labels from your Go backend</span>
       </div>
     </div>
   );

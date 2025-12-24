@@ -7,34 +7,64 @@ export interface LogLabel {
 
 export interface LogEntry {
   id: string;
-  timestamp: Date;
+  timestamp: string;
   level: LogLevel;
   message: string;
-  service: string;
-  environment: string;
-  labels: LogLabel[];
-  raw?: string;
+  labels: Record<string, string>;
 }
 
 export interface LogQuery {
   labels: Record<string, string>;
-  startTime?: Date;
-  endTime?: Date;
+  start?: string; // ISO timestamp
+  end?: string;   // ISO timestamp
   limit?: number;
 }
 
-export interface ServiceStats {
-  name: string;
-  totalLogs: number;
-  errorCount: number;
-  warnCount: number;
-  infoCount: number;
-  debugCount: number;
-  logsPerMinute: number;
+export interface IngestPayload {
+  streams: Array<{
+    labels: Record<string, string>;
+    entries: Array<{
+      ts: string;
+      line: string;
+    }>;
+  }>;
 }
 
-export interface TimeRange {
-  label: string;
-  value: string;
-  duration: number; // in minutes
+export interface ChunkInfo {
+  id: string;
+  labels: Record<string, string>;
+  startTime: string;
+  endTime: string;
+  size: number;
+  entryCount: number;
+}
+
+export interface BackendHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  ingestionRate: number;
+  storageUsed: number;
+  chunksCount: number;
+  uptime: number;
+}
+
+export interface BackendConfig {
+  apiUrl: string;
+  apiKey?: string;
+}
+
+export interface QueryResult {
+  logs: LogEntry[];
+  stats: {
+    queriedChunks: number;
+    scannedLines: number;
+    executionTime: number;
+  };
+}
+
+// Prometheus-compatible metrics format
+export interface PrometheusMetrics {
+  lokiclone_ingested_bytes_total: number;
+  lokiclone_ingested_lines_total: number;
+  lokiclone_chunks_stored_total: number;
+  lokiclone_query_duration_seconds: number;
 }
