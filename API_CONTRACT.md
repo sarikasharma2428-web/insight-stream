@@ -1,7 +1,7 @@
-# LokiClone Frontend ↔ Backend API Contract
+# LogPulse Frontend ↔ Backend API Contract
 
 ## Overview
-This document defines the exact API format the frontend dashboard expects from your `loki-lite` Go backend.
+This document defines the exact API format the frontend dashboard expects from your LogPulse Go backend.
 
 ---
 
@@ -215,21 +215,21 @@ GET /labels/service/values
 Returns metrics in Prometheus text format.
 
 ```
-# HELP lokiclone_ingested_bytes_total Total bytes ingested
-# TYPE lokiclone_ingested_bytes_total counter
-lokiclone_ingested_bytes_total 48723456
+# HELP logpulse_ingested_bytes_total Total bytes ingested
+# TYPE logpulse_ingested_bytes_total counter
+logpulse_ingested_bytes_total 48723456
 
-# HELP lokiclone_ingested_lines_total Total log lines ingested
-# TYPE lokiclone_ingested_lines_total counter
-lokiclone_ingested_lines_total 125000
+# HELP logpulse_ingested_lines_total Total log lines ingested
+# TYPE logpulse_ingested_lines_total counter
+logpulse_ingested_lines_total 125000
 
-# HELP lokiclone_chunks_stored_total Total chunks stored
-# TYPE lokiclone_chunks_stored_total gauge
-lokiclone_chunks_stored_total 127
+# HELP logpulse_chunks_stored_total Total chunks stored
+# TYPE logpulse_chunks_stored_total gauge
+logpulse_chunks_stored_total 127
 
-# HELP lokiclone_query_duration_seconds Query execution duration
-# TYPE lokiclone_query_duration_seconds gauge
-lokiclone_query_duration_seconds 0.045
+# HELP logpulse_query_duration_seconds Query execution duration
+# TYPE logpulse_query_duration_seconds gauge
+logpulse_query_duration_seconds 0.045
 ```
 
 ---

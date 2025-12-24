@@ -1,20 +1,20 @@
 version: '3.8'
 
 services:
-  lokilite:
+  logpulse:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
       - "8080:8080"
     volumes:
-      - lokilite-data:/app/data
+      - logpulse-data:/app/data
     environment:
-      - LOKILITE_PORT=8080
-      - LOKILITE_STORAGE_PATH=/app/data/logs
+      - LOGPULSE_PORT=8080
+      - LOGPULSE_STORAGE_PATH=/app/data/logs
     restart: unless-stopped
     networks:
-      - lokilite-net
+      - logpulse-net
 
   agent:
     build:
@@ -24,12 +24,12 @@ services:
       - /var/log:/var/log:ro  # Mount host logs as read-only
       - agent-positions:/app/positions
     environment:
-      - LOKILITE_SERVER_URL=http://lokilite:8080
+      - LOGPULSE_SERVER_URL=http://logpulse:8080
     depends_on:
-      - lokilite
+      - logpulse
     restart: unless-stopped
     networks:
-      - lokilite-net
+      - logpulse-net
 
   # Optional: Grafana for visualization
   grafana:
@@ -41,9 +41,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
-      - lokilite
+      - logpulse
     networks:
-      - lokilite-net
+      - logpulse-net
 
   # Optional: Prometheus for metrics
   prometheus:
@@ -55,15 +55,15 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     depends_on:
-      - lokilite
+      - logpulse
     networks:
-      - lokilite-net
+      - logpulse-net
 
 networks:
-  lokilite-net:
+  logpulse-net:
     driver: bridge
 
 volumes:
-  lokilite-data:
+  logpulse-data:
   agent-positions:
   grafana-data:

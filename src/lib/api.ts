@@ -5,12 +5,12 @@ class ApiClient {
 
   setConfig(config: BackendConfig) {
     this.config = config;
-    localStorage.setItem('lokiclone_config', JSON.stringify(config));
+    localStorage.setItem('logpulse_config', JSON.stringify(config));
   }
 
   getConfig(): BackendConfig | null {
     if (this.config) return this.config;
-    const stored = localStorage.getItem('lokiclone_config');
+    const stored = localStorage.getItem('logpulse_config');
     if (stored) {
       this.config = JSON.parse(stored);
       return this.config;
@@ -20,7 +20,7 @@ class ApiClient {
 
   clearConfig() {
     this.config = null;
-    localStorage.removeItem('lokiclone_config');
+    localStorage.removeItem('logpulse_config');
   }
 
   private getHeaders(): HeadersInit {

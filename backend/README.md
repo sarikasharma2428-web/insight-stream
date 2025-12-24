@@ -1,4 +1,4 @@
-# LokiLite - Lightweight Log Aggregation System
+# LogPulse - Lightweight Log Aggregation System
 
 A Loki-inspired log aggregation system built in Go. Stores logs cheaply using label-based indexing without full-text search.
 
@@ -20,15 +20,15 @@ A Loki-inspired log aggregation system built in Go. Stores logs cheaply using la
 ```bash
 cd backend
 go mod download
-go build -o lokilite ./cmd/server
-./lokilite
+go build -o logpulse ./cmd/server
+./logpulse
 ```
 
 ### Run Agent Locally
 
 ```bash
-go build -o lokilite-agent ./cmd/agent
-./lokilite-agent -config configs/agent-config.yaml
+go build -o logpulse-agent ./cmd/agent
+./logpulse-agent -config configs/agent-config.yaml
 ```
 
 ### Run with Docker
@@ -44,7 +44,7 @@ Server starts at `http://localhost:8080`
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
-│   Log Agent     │────▶│   LokiLite      │
+│   Log Agent     │────▶│   LogPulse      │
 │  (tail files)   │     │    Server       │
 └─────────────────┘     └────────┬────────┘
                                  │
@@ -221,10 +221,10 @@ targets:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOKILITE_PORT` | 8080 | Server port |
-| `LOKILITE_STORAGE_PATH` | ./data/logs | Storage directory |
-| `LOKILITE_API_KEY` | (none) | Enable auth |
-| `LOKILITE_SERVER_URL` | http://localhost:8080 | Agent target |
+| `LOGPULSE_PORT` | 8080 | Server port |
+| `LOGPULSE_STORAGE_PATH` | ./data/logs | Storage directory |
+| `LOGPULSE_API_KEY` | (none) | Enable auth |
+| `LOGPULSE_SERVER_URL` | http://localhost:8080 | Agent target |
 
 ## License
 

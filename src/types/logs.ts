@@ -63,8 +63,8 @@ export interface QueryResult {
 
 // Prometheus-compatible metrics format
 export interface PrometheusMetrics {
-  lokiclone_ingested_bytes_total: number;
-  lokiclone_ingested_lines_total: number;
-  lokiclone_chunks_stored_total: number;
-  lokiclone_query_duration_seconds: number;
+  logpulse_ingested_bytes_total: number;
+  logpulse_ingested_lines_total: number;
+  logpulse_chunks_stored_total: number;
+  logpulse_query_duration_seconds: number;
 }
