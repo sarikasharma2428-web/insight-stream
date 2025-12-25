@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/models"
 )
 
 var upgrader = websocket.Upgrader{

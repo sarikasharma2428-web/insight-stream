@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/models"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/models"
+	"github.com/logpulse/backend/internal/storage"
 )
 
 // StreamBroadcaster interface for live log streaming

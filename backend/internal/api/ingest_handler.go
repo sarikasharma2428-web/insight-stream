@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/yourusername/loki-lite/internal/ingest"
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/ingest"
+	"github.com/logpulse/backend/internal/models"
 )
 
 // IngestHandler handles log ingestion

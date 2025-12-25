@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/models"
 )
 
 // Reader handles reading log chunks from disk

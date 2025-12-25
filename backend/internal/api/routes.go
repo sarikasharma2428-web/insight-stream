@@ -4,11 +4,11 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/yourusername/loki-lite/internal/config"
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/ingest"
-	"github.com/yourusername/loki-lite/internal/query"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"github.com/logpulse/backend/internal/config"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/ingest"
+	"github.com/logpulse/backend/internal/query"
+	"github.com/logpulse/backend/internal/storage"
 )
 
 // NewRouter creates and configures the HTTP router
