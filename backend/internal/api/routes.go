@@ -26,6 +26,7 @@ func NewRouter(
 	ingestHandler := NewIngestHandler(ingestor)
 	queryHandler := NewQueryHandler(labelIndex, reader)
 	streamHandler := NewStreamHandler(streamHub)
+	lokiHandler := NewLokiHandler(labelIndex, reader)
 
 	// Apply middleware
 	router.Use(corsMiddleware)
@@ -47,6 +48,13 @@ func NewRouter(
 
 	// WebSocket endpoint for live streaming
 	router.HandleFunc("/stream", streamHandler.HandleStream).Methods("GET")
+
+	// Loki-compatible API endpoints (for Grafana integration)
+	router.HandleFunc("/ready", lokiHandler.Ready).Methods("GET", "OPTIONS")
+	router.HandleFunc("/loki/api/v1/query_range", lokiHandler.QueryRange).Methods("GET", "OPTIONS")
+	router.HandleFunc("/loki/api/v1/query", lokiHandler.Query).Methods("GET", "OPTIONS")
+	router.HandleFunc("/loki/api/v1/labels", lokiHandler.Labels).Methods("GET", "OPTIONS")
+	router.HandleFunc("/loki/api/v1/label/{name}/values", lokiHandler.LabelValues).Methods("GET", "OPTIONS")
 
 	return router
 }
