@@ -36,7 +36,7 @@ func (h *HealthHandler) SetWriter(w *storage.Writer) {
 
 // Health handles GET /health
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	lines, bytes := h.ingestor.GetMetrics()
+	lines, _ := h.ingestor.GetMetrics()
 	chunkCount, _ := h.index.Stats()
 
 	var storageUsed int64

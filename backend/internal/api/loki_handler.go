@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/logpulse/backend/internal/index"
-	"github.com/logpulse/backend/internal/query"
-	"github.com/logpulse/backend/internal/storage"
+	"github.com/yourusername/loki-lite/internal/index"
+	"github.com/yourusername/loki-lite/internal/query"
+	"github.com/yourusername/loki-lite/internal/storage"
 )
 
 // LokiHandler handles Loki-compatible API endpoints for Grafana

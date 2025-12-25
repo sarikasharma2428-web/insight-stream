@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -272,7 +271,7 @@ func (a *Agent) tailFile(path string, baseLabels map[string]string) {
 
 		// Auto-detect log level from content
 		for i := range entries {
-			level := detectLogLevel(entries[i].Line)
+			_ = detectLogLevel(entries[i].Line)
 			// Store level in a temporary way - we'll add it to labels per entry
 			entries[i].Line = entries[i].Line // Keep original
 		}
