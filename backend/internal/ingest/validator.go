@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/models"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/models"
 )
 
 // Index is an in-memory label-to-chunk mapping

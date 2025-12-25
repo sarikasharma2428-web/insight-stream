@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/query"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/query"
+	"github.com/logpulse/backend/internal/storage"
 )
 
 // QueryHandler handles log queries

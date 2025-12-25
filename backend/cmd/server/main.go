@@ -8,11 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/api"
-	"github.com/yourusername/loki-lite/internal/config"
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/ingest"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"github.com/logpulse/backend/internal/api"
+	"github.com/logpulse/backend/internal/config"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/ingest"
+	"github.com/logpulse/backend/internal/storage"
 )
 
 func main() {

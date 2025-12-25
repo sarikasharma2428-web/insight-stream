@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/models"
+	"github.com/logpulse/backend/internal/models"
 )
 
 // Writer handles writing log chunks to disk
