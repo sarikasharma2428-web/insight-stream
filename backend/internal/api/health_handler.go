@@ -64,17 +64,32 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 
 // Metrics handles GET /metrics (Prometheus format)
 func (h *HealthHandler) Metrics(w http.ResponseWriter, r *http.Request) {
-	lines, bytes := h.ingestor.GetMetrics()
-	chunkCount, _ := h.index.Stats()
+       lines, bytes := h.ingestor.GetMetrics()
+       chunkCount, _ := h.index.Stats()
 
-	var storageUsed int64
-	if h.writer != nil {
-		storageUsed = h.writer.GetStorageSize()
-	}
+       var storageUsed int64
+       if h.writer != nil {
+	       storageUsed = h.writer.GetStorageSize()
+       }
 
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+       w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 
-	fmt.Fprintf(w, `# HELP lokiclone_ingested_bytes_total Total bytes ingested
+       // Expose Kubernetes labels/annotations if present
+       k8sLabels := h.ingestor.k8sLabels
+       k8sAnnotations := h.ingestor.k8sAnnotations
+
+       for k, v := range k8sLabels {
+	       fmt.Fprintf(w, "# HELP lokiclone_k8s_label_%s Kubernetes label %s\n", k, k)
+	       fmt.Fprintf(w, "# TYPE lokiclone_k8s_label_%s gauge\n", k)
+	       fmt.Fprintf(w, "lokiclone_k8s_label_%s{value=\"%s\"} 1\n\n", k, v)
+       }
+       for k, v := range k8sAnnotations {
+	       fmt.Fprintf(w, "# HELP lokiclone_k8s_annotation_%s Kubernetes annotation %s\n", k, k)
+	       fmt.Fprintf(w, "# TYPE lokiclone_k8s_annotation_%s gauge\n", k)
+	       fmt.Fprintf(w, "lokiclone_k8s_annotation_%s{value=\"%s\"} 1\n\n", k, v)
+       }
+
+       fmt.Fprintf(w, `# HELP lokiclone_ingested_bytes_total Total bytes ingested
 # TYPE lokiclone_ingested_bytes_total counter
 lokiclone_ingested_bytes_total %d
 

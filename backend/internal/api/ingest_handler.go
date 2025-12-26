@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/logpulse/backend/internal/plugin"
+
 	"github.com/logpulse/backend/internal/ingest"
 	"github.com/logpulse/backend/internal/models"
 )
@@ -11,11 +13,12 @@ import (
 // IngestHandler handles log ingestion
 type IngestHandler struct {
 	ingestor *ingest.Ingestor
+	notifier *plugin.WebhookNotifier
 }
 
 // NewIngestHandler creates a new ingest handler
-func NewIngestHandler(ingestor *ingest.Ingestor) *IngestHandler {
-	return &IngestHandler{ingestor: ingestor}
+func NewIngestHandler(ingestor *ingest.Ingestor, notifier *plugin.WebhookNotifier) *IngestHandler {
+	return &IngestHandler{ingestor: ingestor, notifier: notifier}
 }
 
 // Ingest handles POST /ingest
@@ -32,11 +35,25 @@ func (h *IngestHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accepted, err := h.ingestor.Ingest(&req)
-	if err != nil {
-		http.Error(w, "Ingestion error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+
+	       accepted, err := h.ingestor.Ingest(&req)
+	       if err != nil {
+		       http.Error(w, "Ingestion error: "+err.Error(), http.StatusInternalServerError)
+		       return
+	       }
+
+	       // Notify webhooks (plugin system)
+	       if h.notifier != nil {
+		       for _, stream := range req.Streams {
+			       for _, entry := range stream.Entries {
+				       h.notifier.Notify("log", map[string]interface{}{
+					       "labels": stream.Labels,
+					       "message": entry.Line,
+					       "timestamp": entry.Ts,
+				       })
+			       }
+		       }
+	       }
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.IngestResponse{

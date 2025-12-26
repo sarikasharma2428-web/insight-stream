@@ -31,6 +31,10 @@ type Ingestor struct {
 	ingestedBytes int64
 	metricsMu     sync.RWMutex
 
+	// Kubernetes context
+	k8sLabels      map[string]string
+	k8sAnnotations map[string]string
+
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 }
@@ -67,10 +71,33 @@ func (ing *Ingestor) Stop() {
 }
 
 // Ingest processes incoming log streams
+// ExtractK8sContext extracts Kubernetes labels/annotations from log labels
+func ExtractK8sContext(labels map[string]string) (map[string]string, map[string]string) {
+	k8sLabels := make(map[string]string)
+	k8sAnnotations := make(map[string]string)
+	for k, v := range labels {
+		if len(k) > 4 && k[:4] == "k8s_" {
+			k8sLabels[k[4:]] = v
+		}
+		if len(k) > 10 && k[:10] == "k8s_annot_" {
+			k8sAnnotations[k[10:]] = v
+		}
+	}
+	return k8sLabels, k8sAnnotations
+}
+
 func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 	accepted := 0
 
-	for _, stream := range req.Streams {
+	   for _, stream := range req.Streams {
+		   // Extract and store Kubernetes context if present
+		   k8sLabels, k8sAnnotations := ExtractK8sContext(stream.Labels)
+		   if len(k8sLabels) > 0 {
+			   ing.k8sLabels = k8sLabels
+		   }
+		   if len(k8sAnnotations) > 0 {
+			   ing.k8sAnnotations = k8sAnnotations
+		   }
 		if err := ValidateStream(&stream); err != nil {
 			log.Printf("Invalid stream: %v", err)
 			continue

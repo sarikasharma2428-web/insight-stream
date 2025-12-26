@@ -2,28 +2,46 @@ package api
 
 import (
 	"net/http"
+	"github.com/logpulse/backend/internal/api"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/gorilla/mux"
-	"github.com/yourusername/loki-lite/internal/config"
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/ingest"
-	"github.com/yourusername/loki-lite/internal/query"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"github.com/logpulse/backend/internal/config"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/ingest"
+	// "github.com/logpulse/backend/internal/query" // removed unused import
+	"github.com/logpulse/backend/internal/storage"
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(
+func NewRouterWithWebhooks(
 	ingestor *ingest.Ingestor,
 	reader *storage.Reader,
 	labelIndex *index.Index,
 	cfg *config.Config,
 	streamHub *StreamHub,
+	webhookNotifier interface{},
 ) *mux.Router {
 	router := mux.NewRouter()
 
 	// Create handlers
 	healthHandler := NewHealthHandler(ingestor, reader, labelIndex)
-	ingestHandler := NewIngestHandler(ingestor)
+	       var ingestHandler *IngestHandler
+	       if webhookNotifier != nil {
+		       ingestHandler = NewIngestHandler(ingestor, webhookNotifier.(interface{ Notify(string, map[string]interface{}) }))
+	       } else {
+		       ingestHandler = NewIngestHandler(ingestor, nil)
+	       }
+	// For backward compatibility
+	func NewRouter(
+		ingestor *ingest.Ingestor,
+		reader *storage.Reader,
+		labelIndex *index.Index,
+		cfg *config.Config,
+		streamHub *StreamHub,
+	) *mux.Router {
+		return NewRouterWithWebhooks(ingestor, reader, labelIndex, cfg, streamHub, nil)
+	}
 	queryHandler := NewQueryHandler(labelIndex, reader)
 	streamHandler := NewStreamHandler(streamHub)
 	lokiHandler := NewLokiHandler(labelIndex, reader)
@@ -39,6 +57,8 @@ func NewRouter(
 	// Register routes
 	router.HandleFunc("/health", healthHandler.Health).Methods("GET", "OPTIONS")
 	router.HandleFunc("/metrics", healthHandler.Metrics).Methods("GET", "OPTIONS")
+	router.Handle("/prometheus-metrics", promhttp.Handler()).Methods("GET")
+	router.HandleFunc("/metrics/stream", api.ServeMetricsSSE).Methods("GET")
 
 	router.HandleFunc("/ingest", ingestHandler.Ingest).Methods("POST", "OPTIONS")
 

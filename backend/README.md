@@ -94,6 +94,24 @@ ws.send(JSON.stringify({
 }));
 ```
 
+## Real-Time Metrics Streaming (SSE)
+
+You can receive real-time Prometheus metrics updates using Server-Sent Events (SSE):
+
+- Endpoint: `/metrics/stream`
+- Content-Type: `text/event-stream`
+
+Example (JavaScript):
+
+```js
+const es = new EventSource('http://localhost:8080/metrics/stream');
+es.onmessage = (event) => {
+  console.log('Metrics:', event.data);
+};
+```
+
+This allows dashboards or custom tools to display live metrics without polling.
+
 ## Log Agent
 
 The agent tails log files and sends them to the server:
@@ -226,6 +244,99 @@ targets:
 | `LOGPULSE_API_KEY` | (none) | Enable auth |
 | `LOGPULSE_SERVER_URL` | http://localhost:8080 | Agent target |
 
-## License
+## Grafana Integration
 
-MIT
+### Import Dashboard
+
+A ready-made Grafana dashboard is provided at `backend/docker/grafana-dashboard.json`.
+
+1. In Grafana, go to **Dashboards > Import**.
+2. Upload the `grafana-dashboard.json` file or paste its contents.
+3. Select your Prometheus data source (should be scraping `/prometheus-metrics` endpoint).
+4. Click **Import**.
+
+The dashboard visualizes:
+- API requests, errors, and latency
+- Ingested log lines and bytes
+- Chunks stored, storage used, and server uptime
+
+### Prometheus Scrape Config
+
+Add this to your Prometheus config:
+
+```yaml
+  - job_name: 'insight-stream'
+    metrics_path: /prometheus-metrics
+    static_configs:
+      - targets: ['<your-backend-host>:8080']
+```
+
+## Kubernetes Labels/Annotations Correlation
+
+If your log agent or application includes Kubernetes metadata in log labels (e.g.:
+- `k8s_namespace`, `k8s_pod`, `k8s_container`, or
+- `k8s_annot_<annotation>`),
+
+these will be extracted and exposed as Prometheus metrics (e.g., `lokiclone_k8s_label_namespace`, `lokiclone_k8s_annotation_<annotation>`). This allows you to correlate logs and metrics with Kubernetes context in Grafana or Prometheus queries.
+
+Example log label payload:
+```json
+{
+  "labels": {
+    "service": "api",
+    "k8s_namespace": "default",
+    "k8s_pod": "api-1234",
+    "k8s_annot_team": "devops"
+  },
+  ...
+}
+```
+
+## Webhook/Plugin System
+
+You can now send logs/alerts to external tools (Slack, PagerDuty, custom scripts) using webhooks.
+
+- Configure webhooks in `backend/configs/webhooks.yaml`:
+
+```yaml
+webhooks:
+  - url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    events: ["log"]
+  - url: "http://localhost:9000/custom-script"
+    events: ["alert"]
+```
+
+- On every log ingestion, a POST request is sent to the configured URLs with log data.
+- You can extend this to support custom alerting logic or plugins.
+
+## OpenTelemetry Support
+
+OpenTelemetry tracing is enabled for core API endpoints. You can:
+- Export traces to Jaeger, Zipkin, or any OTel-compatible backend (default: stdout for demo)
+- Add more spans in handlers for deeper observability
+
+To enable advanced tracing, configure the exporter in `cmd/server/main.go`.
+
+## API/SDK Integration
+
+SDKs are provided for easy integration:
+
+### Node.js
+See `sdk/insight-stream.js`:
+```js
+const InsightStream = require('./sdk/insight-stream');
+const client = new InsightStream({ baseUrl: 'http://localhost:8080' });
+await client.ingestLog({ service: 'api' }, 'Hello from Node!');
+```
+
+### Python
+See `sdk/insight_stream.py`:
+```python
+from sdk.insight_stream import InsightStream
+client = InsightStream('http://localhost:8080')
+client.ingest_log({ 'service': 'api' }, 'Hello from Python!')
+```
+
+Both SDKs support log ingestion and querying.
+
+---

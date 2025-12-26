@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/gorilla/websocket"
 	"github.com/logpulse/backend/internal/models"
 )
@@ -119,6 +121,68 @@ func matchesFilter(logLabels, filterLabels map[string]string) bool {
 // StreamHandler handles WebSocket connections for live log streaming
 type StreamHandler struct {
 	hub *StreamHub
+}
+
+// ServeMetricsSSE handles /metrics/stream SSE endpoint for real-time Prometheus metrics
+func ServeMetricsSSE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			// Capture Prometheus metrics as text
+			w.Write([]byte("event: metrics\n"))
+			w.Write([]byte("data: "))
+			promhttp.Handler().ServeHTTP(&sseWriter{w}, r)
+			w.Write([]byte("\n\n"))
+			flusher.Flush()
+		}
+	}
+}
+
+// sseWriter wraps http.ResponseWriter to capture promhttp output as SSE data
+type sseWriter struct {
+	http.ResponseWriter
+}
+
+func (w *sseWriter) Write(p []byte) (int, error) {
+	// Replace newlines with \ndata:  for SSE compliance
+	s := string(p)
+	s = s[:len(s)-1] // Remove last newline
+	lines := []byte("")
+	for _, line := range splitLines(s) {
+		lines = append(lines, []byte("\ndata: "+line)...)
+	}
+	return w.ResponseWriter.Write(lines)
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
 }
 
 // NewStreamHandler creates a new stream handler

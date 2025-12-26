@@ -6,9 +6,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yourusername/loki-lite/internal/index"
-	"github.com/yourusername/loki-lite/internal/query"
-	"github.com/yourusername/loki-lite/internal/storage"
+	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/query"
+	"github.com/logpulse/backend/internal/storage"
 )
 
 // LokiHandler handles Loki-compatible API endpoints for Grafana
@@ -16,15 +24,48 @@ type LokiHandler struct {
 	index    *index.Index
 	reader   *storage.Reader
 	executor *query.Executor
+
+	// Prometheus metrics
+	requestCount   *prometheus.CounterVec
+	latency        *prometheus.HistogramVec
+	errorCount     *prometheus.CounterVec
 }
 
 // NewLokiHandler creates a new Loki-compatible handler
 func NewLokiHandler(idx *index.Index, reader *storage.Reader) *LokiHandler {
-	return &LokiHandler{
-		index:    idx,
-		reader:   reader,
-		executor: query.NewExecutor(idx, reader),
-	}
+       requestCount := prometheus.NewCounterVec(
+	       prometheus.CounterOpts{
+		       Name: "loki_handler_requests_total",
+		       Help: "Total number of requests to LokiHandler endpoints.",
+	       },
+	       []string{"endpoint", "method"},
+       )
+       latency := prometheus.NewHistogramVec(
+	       prometheus.HistogramOpts{
+		       Name:    "loki_handler_request_duration_seconds",
+		       Help:    "Request latency for LokiHandler endpoints.",
+		       Buckets: prometheus.DefBuckets,
+	       },
+	       []string{"endpoint", "method"},
+       )
+       errorCount := prometheus.NewCounterVec(
+	       prometheus.CounterOpts{
+		       Name: "loki_handler_errors_total",
+		       Help: "Total number of errors in LokiHandler endpoints.",
+	       },
+	       []string{"endpoint", "method"},
+       )
+
+       prometheus.MustRegister(requestCount, latency, errorCount)
+
+       return &LokiHandler{
+	       index:        idx,
+	       reader:       reader,
+	       executor:     query.NewExecutor(idx, reader),
+	       requestCount: requestCount,
+	       latency:      latency,
+	       errorCount:   errorCount,
+       }
 }
 
 // LokiQueryRangeResponse represents Loki's query_range response format
@@ -47,6 +88,16 @@ type LokiStream struct {
 
 // QueryRange handles GET /loki/api/v1/query_range (Grafana-compatible)
 func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
+       tracer := otel.Tracer("insight-stream/loki")
+       ctx, span := tracer.Start(r.Context(), "QueryRange", trace.WithAttributes(
+	       attribute.String("http.method", r.Method),
+	       attribute.String("http.route", "/loki/api/v1/query_range"),
+       ))
+       defer span.End()
+       r = r.WithContext(ctx)
+       startObs := time.Now()
+       endpoint := "/loki/api/v1/query_range"
+       h.requestCount.WithLabelValues(endpoint, r.Method).Inc()
 	queryStr := r.URL.Query().Get("query")
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
@@ -56,25 +107,27 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 	var startTime, endTime time.Time
 	var err error
 
-	if startStr != "" {
-		startTime, err = parseLokiTime(startStr)
-		if err != nil {
-			http.Error(w, "Invalid start time format", http.StatusBadRequest)
-			return
-		}
-	} else {
-		startTime = time.Now().Add(-1 * time.Hour)
-	}
+	       if startStr != "" {
+		       startTime, err = parseLokiTime(startStr)
+		       if err != nil {
+			       h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
+			       http.Error(w, "Invalid start time format", http.StatusBadRequest)
+			       return
+		       }
+	       } else {
+		       startTime = time.Now().Add(-1 * time.Hour)
+	       }
 
-	if endStr != "" {
-		endTime, err = parseLokiTime(endStr)
-		if err != nil {
-			http.Error(w, "Invalid end time format", http.StatusBadRequest)
-			return
-		}
-	} else {
-		endTime = time.Now()
-	}
+	       if endStr != "" {
+		       endTime, err = parseLokiTime(endStr)
+		       if err != nil {
+			       h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
+			       http.Error(w, "Invalid end time format", http.StatusBadRequest)
+			       return
+		       }
+	       } else {
+		       endTime = time.Now()
+	       }
 
 	// Parse limit
 	limit := 1000
@@ -86,11 +139,12 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
-	if err != nil {
-		http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+	       result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
+	       if err != nil {
+		       h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
+		       http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
+		       return
+	       }
 
 	// Convert to Loki format - group by labels
 	streamMap := make(map[string]*LokiStream)
@@ -101,16 +155,18 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 
 		if stream, exists := streamMap[labelKey]; exists {
 			// Add value to existing stream
+			parsedTime, _ := time.Parse(time.RFC3339Nano, log.Timestamp)
 			stream.Values = append(stream.Values, []string{
-				strconv.FormatInt(log.Timestamp.UnixNano(), 10),
-				log.Line,
+				strconv.FormatInt(parsedTime.UnixNano(), 10),
+				log.Message,
 			})
 		} else {
 			// Create new stream
+			parsedTime, _ := time.Parse(time.RFC3339Nano, log.Timestamp)
 			streamMap[labelKey] = &LokiStream{
 				Stream: log.Labels,
 				Values: [][]string{
-					{strconv.FormatInt(log.Timestamp.UnixNano(), 10), log.Line},
+					{strconv.FormatInt(parsedTime.UnixNano(), 10), log.Message},
 				},
 			}
 		}
@@ -132,10 +188,21 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+	h.latency.WithLabelValues(endpoint, r.Method).Observe(time.Since(startObs).Seconds())
 }
 
 // Query handles GET /loki/api/v1/query (instant query)
 func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
+       tracer := otel.Tracer("insight-stream/loki")
+       ctx, span := tracer.Start(r.Context(), "Query", trace.WithAttributes(
+	       attribute.String("http.method", r.Method),
+	       attribute.String("http.route", "/loki/api/v1/query"),
+       ))
+       defer span.End()
+       r = r.WithContext(ctx)
+       startObs := time.Now()
+       endpoint := "/loki/api/v1/query"
+       h.requestCount.WithLabelValues(endpoint, r.Method).Inc()
 	// Instant query - use small time window
 	queryStr := r.URL.Query().Get("query")
 	limitStr := r.URL.Query().Get("limit")
@@ -151,11 +218,12 @@ func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
-	if err != nil {
-		http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+	       result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
+	       if err != nil {
+		       h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
+		       http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
+		       return
+	       }
 
 	// Convert to Loki format
 	streamMap := make(map[string]*LokiStream)
@@ -163,19 +231,20 @@ func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
 	for _, log := range result.Logs {
 		labelKey := labelsToKey(log.Labels)
 
-		if stream, exists := streamMap[labelKey]; exists {
-			stream.Values = append(stream.Values, []string{
-				strconv.FormatInt(log.Timestamp.UnixNano(), 10),
-				log.Line,
-			})
-		} else {
-			streamMap[labelKey] = &LokiStream{
-				Stream: log.Labels,
-				Values: [][]string{
-					{strconv.FormatInt(log.Timestamp.UnixNano(), 10), log.Line},
-				},
-			}
-		}
+		       parsedTime, _ := time.Parse(time.RFC3339Nano, log.Timestamp)
+		       if stream, exists := streamMap[labelKey]; exists {
+			       stream.Values = append(stream.Values, []string{
+				       strconv.FormatInt(parsedTime.UnixNano(), 10),
+				       log.Message,
+			       })
+		       } else {
+			       streamMap[labelKey] = &LokiStream{
+				       Stream: log.Labels,
+				       Values: [][]string{
+					       {strconv.FormatInt(parsedTime.UnixNano(), 10), log.Message},
+				       },
+			       }
+		       }
 	}
 
 	streams := make([]LokiStream, 0, len(streamMap))
@@ -193,6 +262,7 @@ func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+	h.latency.WithLabelValues(endpoint, r.Method).Observe(time.Since(startObs).Seconds())
 }
 
 // Labels handles GET /loki/api/v1/labels

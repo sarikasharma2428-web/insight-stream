@@ -1,0 +1,5 @@
+webhooks:
+  - url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    events: ["log"]
+  - url: "http://localhost:9000/custom-script"
+    events: ["alert"]

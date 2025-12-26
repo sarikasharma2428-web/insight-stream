@@ -1,0 +1,8 @@
+alerts:
+  - name: "High Error Rate"
+    expr: '{level="error"} | count_over_time([5m]) > 10'
+    threshold: 10
+    window: 5m
+    channels: ["slack", "webhook"]
+    labels:
+      severity: "critical"
